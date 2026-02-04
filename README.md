@@ -97,7 +97,10 @@ flowchart TB
 export GEMINI_API_KEY="your-gemini-key"
 export OPENAI_API_KEY="your-openai-key"
 
-# 3️⃣ Summon the council
+# 3️⃣ Test your setup (recommended)
+/synod-setup
+
+# 4️⃣ Summon the council
 /synod review Is this authentication flow secure?
 ```
 
@@ -110,6 +113,68 @@ export OPENAI_API_KEY="your-openai-key"
 <img src="https://capsule-render.vercel.app/api?type=rect&color=gradient&customColorList=12,14,25&height=2" width="50%"/>
 
 </div>
+
+<br/>
+
+---
+
+<div align="center">
+
+## 🔧 INITIAL SETUP TEST
+
+*Verify your models work before deliberating*
+
+</div>
+
+<br/>
+
+```bash
+/synod-setup
+```
+
+<div align="center">
+
+| Check | What It Does |
+|:-----:|:-------------|
+| **CLI** | Verifies gemini-3.py and openai-cli.py exist |
+| **API Keys** | Checks GOOGLE_API_KEY and OPENAI_API_KEY |
+| **Response Time** | Tests each model with 120s timeout |
+| **Classification** | Labels models: ✓ Recommended / ✓ Usable / ⚠ Slow / ✗ Failed |
+
+</div>
+
+<br/>
+
+<details>
+<summary><b>📋 Sample Output</b></summary>
+
+<br/>
+
+```
+[Synod Setup] 초기 설정을 시작합니다...
+
+Step 1/3: CLI 도구 확인
+  ✓ gemini-3.py
+  ✓ openai-cli.py
+
+Step 2/3: API 키 확인
+  ✓ GOOGLE_API_KEY (설정됨)
+  ✓ OPENAI_API_KEY (설정됨)
+
+Step 3/3: 모델 응답 시간 측정 (타임아웃: 120초)
+
+Provider    Model              Latency    Status
+───────────────────────────────────────────────
+gemini      flash              3.2초      ✓ 권장
+gemini      pro                12.4초     ✓ 사용 가능
+openai      gpt4o              2.8초      ✓ 권장
+openai      o3                 45.2초     ⚠ 느림
+
+[완료] 4/4 모델 사용 가능
+Synod를 사용할 준비가 되었습니다!
+```
+
+</details>
 
 <br/>
 
