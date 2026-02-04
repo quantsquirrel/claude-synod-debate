@@ -136,8 +136,8 @@ export OPENAI_API_KEY="your-openai-key"
 
 | Check | What It Does |
 |:-----:|:-------------|
-| **CLI** | Verifies gemini-3.py and openai-cli.py exist |
-| **API Keys** | Checks GOOGLE_API_KEY and OPENAI_API_KEY |
+| **CLI** | Verifies all 7 provider CLIs exist |
+| **API Keys** | Checks all provider API keys |
 | **Response Time** | Tests each model with 120s timeout |
 | **Classification** | Labels models: ✓ Recommended / ✓ Usable / ⚠ Slow / ✗ Failed |
 
