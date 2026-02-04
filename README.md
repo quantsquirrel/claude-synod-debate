@@ -192,15 +192,15 @@ Synod를 사용할 준비가 되었습니다!
 
 <div align="center">
 
-| Provider | CLI | Best For | Required |
-|:--------:|:---:|:---------|:--------:|
-| 🔵 **Gemini** | `gemini-3` | Default debater, thinking modes | ✅ |
-| 🟢 **OpenAI** | `openai-cli` | Default debater, o3 reasoning | ✅ |
+| Provider | CLI | Best For | Status |
+|:--------:|:---:|:---------|:------:|
+| 🔵 **Gemini** | `gemini-3` | Default debater, thinking modes | Required |
+| 🟢 **OpenAI** | `openai-cli` | Default debater, o3 reasoning | Required |
 | 🟣 **DeepSeek** | `deepseek-cli` | Math, reasoning (R1) | Optional |
 | ⚡ **Groq** | `groq-cli` | Ultra-fast inference (LPU) | Optional |
-| 🔶 **Grok** | `grok-cli` | 2M context window | Optional |
-| 🟠 **Mistral** | `mistral-cli` | Code, European deployment | Optional |
-| 🔴 **Claude** | `claude-cli` | Extended Thinking | Optional |
+| 🌐 **OpenRouter** | `openrouter-cli` | Multi-model fallback | Recommended |
+| 🔶 **Grok** | `grok-cli` | 2M context window | Opt-in |
+| 🟠 **Mistral** | `mistral-cli` | Code, European deployment | Opt-in |
 
 </div>
 
@@ -215,9 +215,16 @@ Synod를 사용할 준비가 되었습니다!
 # Optional: Add more providers to your council
 export DEEPSEEK_API_KEY="your-deepseek-key"   # DeepSeek R1
 export GROQ_API_KEY="your-groq-key"           # Groq LPU
-export XAI_API_KEY="your-xai-key"             # Grok
-export MISTRAL_API_KEY="your-mistral-key"     # Mistral
-export ANTHROPIC_API_KEY="your-anthropic-key" # Claude
+export OPENROUTER_API_KEY="your-openrouter-key" # OpenRouter (Recommended)
+
+# Opt-in Providers (requires explicit activation)
+# Grok (2M context window)
+export SYNOD_ENABLE_GROK=1
+export XAI_API_KEY="your-xai-key"
+
+# Mistral (code specialization)
+export SYNOD_ENABLE_MISTRAL=1
+export MISTRAL_API_KEY="your-mistral-key"
 ```
 
 </details>
