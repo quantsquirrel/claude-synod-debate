@@ -46,19 +46,20 @@ MODELS_TO_TEST = {
         "models": ["large", "small"],
         "env_key": "MISTRAL_API_KEY",
     },
-    "claude": {
-        "cli": "claude-cli.py",
-        "models": ["sonnet", "haiku"],
-        "env_key": "ANTHROPIC_API_KEY",
+    "openrouter": {
+        "cli": "openrouter-cli.py",
+        "models": ["claude", "llama", "qwen"],
+        "env_key": "OPENROUTER_API_KEY",
     },
 }
 
-# 테스트 대상 모델 (Gemini + OpenAI 핵심 모델)
+# 테스트 대상 모델 (Gemini + OpenAI + OpenRouter 핵심 모델)
 TEST_TARGETS = [
     ("gemini", "flash"),
     ("gemini", "pro"),
     ("openai", "gpt4o"),
     ("openai", "o3"),
+    ("openrouter", "claude"),
 ]
 
 # 테스트 프롬프트 (Synod Solver와 유사한 복잡도)

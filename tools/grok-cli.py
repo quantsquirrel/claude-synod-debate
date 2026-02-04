@@ -23,6 +23,15 @@ import random
 import sys
 import time
 
+# Check if Grok CLI is enabled BEFORE importing heavy dependencies
+if not os.environ.get("SYNOD_ENABLE_GROK"):
+    sys.stderr.write(
+        "[Grok CLI] 비활성화 상태입니다.\n"
+        "활성화하려면: export SYNOD_ENABLE_GROK=1\n"
+        "또는 OpenRouter를 통해 사용: openrouter-cli --model grok\n"
+    )
+    sys.exit(2)
+
 try:
     import httpx
     from openai import OpenAI

@@ -20,6 +20,15 @@ import os
 import sys
 import time
 
+# Check if Mistral CLI is enabled BEFORE importing heavy dependencies
+if not os.environ.get("SYNOD_ENABLE_MISTRAL"):
+    sys.stderr.write(
+        "[Mistral CLI] 비활성화 상태입니다.\n"
+        "활성화하려면: export SYNOD_ENABLE_MISTRAL=1\n"
+        "또는 OpenRouter를 통해 사용: openrouter-cli --model mistral\n"
+    )
+    sys.exit(2)
+
 # Suppress warnings
 import warnings
 
