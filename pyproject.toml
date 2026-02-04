@@ -1,6 +1,6 @@
 [project]
 name = "synod"
-version = "1.0.0"
+version = "1.1.0"
 description = "Multi-agent deliberation system for Claude Code"
 readme = "README.md"
 license = {text = "MIT"}
