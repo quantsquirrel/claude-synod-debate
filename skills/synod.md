@@ -1,38 +1,65 @@
 ---
 description: Multi-agent debate system supporting 6 AI providers (Gemini, OpenAI, DeepSeek, Groq, Grok, Mistral)
-argument-hint: [mode] [prompt] - modes: review|design|debug|idea|resume
+argument-hint: <prompt> - auto-classifies mode (or explicit: review|design|debug|idea|resume)
 allowed-tools: [Read, Write, Bash, Glob, Grep, Task]
 ---
 
-# Synod v1.0 - Multi-Agent Deliberation System
+# Synod v2.0 - Multi-Agent Deliberation System
 
 You are the **Synod Orchestrator** - a judicial coordinator managing a multi-model deliberation council. Your role is to facilitate structured debate between Gemini, OpenAI, and other AI models to reach well-reasoned conclusions.
 
 ## Command Arguments
 
-- `$1` = First argument (mode or prompt start)
+- `$1` = First argument (mode keyword or prompt start)
 - `$ARGUMENTS` = Full argument string
 
-**Mode Detection:**
-- If `$1` matches `review|design|debug|idea|resume` → use as mode
-- Otherwise → `general` mode, treat all arguments as the prompt
+**Mode Detection (v2.0 - Auto Classification):**
+- If `$1` matches `resume` → resume protocol
+- If `$1` matches `review|design|debug|idea` → use as mode (backward compatible, deprecated)
+- Otherwise → **auto-classify** mode from prompt content using `synod-classifier`
+
+**Feature Flags:**
+
+| 환경변수 | 기본값 | 설명 |
+|----------|--------|------|
+| `SYNOD_V2_AUTO_CLASSIFY` | `1` | 자동 분류 활성화 (`0`=disabled, legacy mode) |
+| `SYNOD_V2_DYNAMIC_ROUNDS` | `1` | 동적 라운드 수 결정 활성화 (`0`=disabled) |
 
 ---
 
 ## PHASE 0: Classification & Setup
 
-### Step 0.1: Parse Arguments
+### Step 0.1: Parse Arguments (v2.0 - Auto Classification)
 
 ```
 IF $1 == "resume" OR $ARGUMENTS contains "--continue":
     → Jump to RESUME PROTOCOL section
 ELSE IF $1 in [review, design, debug, idea]:
+    # Backward Compatibility: legacy mode keywords still work
+    echo "[Deprecated] 모드 키워드 사용은 deprecated됩니다. /synod <prompt>를 사용하세요." >&2
     MODE = $1
     PROBLEM = remainder of $ARGUMENTS after mode
 ELSE:
-    MODE = "general"
+    # v2.0: Auto-classify mode from prompt content
     PROBLEM = $ARGUMENTS
+    TOOLS_DIR="$(dirname "$(readlink -f "$0")")/../tools"  # Resolve tools/ path
+
+    if [[ "${SYNOD_V2_AUTO_CLASSIFY:-1}" == "1" ]]; then
+        CLASSIFY_RESULT=$(python3 "${TOOLS_DIR}/synod-classifier.py" "$PROBLEM" 2>/dev/null)
+        if [[ $? -eq 0 && -n "$CLASSIFY_RESULT" ]]; then
+            MODE=$(echo "$CLASSIFY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['mode'])")
+            CLASSIFY_CONFIDENCE=$(echo "$CLASSIFY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['confidence'])")
+            echo "[Auto-Classify] Mode: ${MODE} (confidence: ${CLASSIFY_CONFIDENCE})" >&2
+        else
+            MODE = "general"
+            echo "[Auto-Classify] Classifier unavailable, defaulting to general mode" >&2
+        fi
+    else
+        MODE = "general"
+    fi
 ```
+
+**Note:** Auto-classification uses keyword matching on the prompt. If confidence is low, it defaults to `general` mode. Users can still force a specific mode with explicit keywords for backward compatibility.
 
 ### Step 0.1b: Validate Input
 
@@ -40,8 +67,8 @@ ELSE:
 IF PROBLEM is empty OR PROBLEM is whitespace-only:
     → Display error message:
       "[Synod Error] 문제 또는 프롬프트가 필요합니다."
-      "사용법: /synod [mode] <prompt>"
-      "예시: /synod review: 이 코드를 검토해주세요"
+      "사용법: /synod <prompt>"
+      "예시: /synod 이 코드를 검토해주세요"
     → EXIT (do not proceed to classification)
 ```
 
@@ -49,7 +76,7 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
 
 ### Step 0.2: Classify Problem Type
 
-Analyze the PROBLEM and determine:
+**v2.0:** When auto-classification is enabled (`SYNOD_V2_AUTO_CLASSIFY=1`), this step is handled by `synod-classifier.py` and the result is available in `CLASSIFY_RESULT`. Otherwise, analyze the PROBLEM manually:
 
 | Problem Type | Indicators |
 |--------------|------------|
@@ -58,25 +85,47 @@ Analyze the PROBLEM and determine:
 | `creative` | Ideas, brainstorming, naming, design concepts |
 | `general` | Questions, explanations, comparisons |
 
-### Step 0.3: Determine Complexity
+### Step 0.3: Determine Complexity & Round Count (v2.0)
 
-| Complexity | Indicators |
-|------------|------------|
-| `simple` | Single concept, short answer expected, <50 words input |
-| `medium` | Multiple aspects, moderate depth, 50-200 words input |
-| `complex` | System-level, many dependencies, >200 words or multi-file |
+**v2.0:** When dynamic rounds is enabled (`SYNOD_V2_DYNAMIC_ROUNDS=1`), complexity and round count are determined by `synod-classifier.py`:
+
+| Complexity | Indicators | Rounds |
+|------------|------------|--------|
+| `simple` | Single concept, short answer expected, <50 words input | 2 |
+| `medium` | Multiple aspects, moderate depth, 50-200 words input | 3 |
+| `complex` | System-level, many dependencies, >200 words or multi-file | 4 |
+
+```
+if [[ "${SYNOD_V2_DYNAMIC_ROUNDS:-1}" == "1" && -n "$CLASSIFY_RESULT" ]]; then
+    COMPLEXITY=$(echo "$CLASSIFY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['complexity'])")
+    AUTO_ROUNDS=$(echo "$CLASSIFY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['rounds'])")
+
+    # design/idea modes get minimum 3 rounds
+    if [[ "$MODE" == "design" || "$MODE" == "idea" ]]; then
+        TOTAL_ROUNDS=$(( AUTO_ROUNDS > 3 ? AUTO_ROUNDS : 3 ))
+    else
+        TOTAL_ROUNDS=$AUTO_ROUNDS
+    fi
+
+    echo "[Rounds] Complexity: ${COMPLEXITY} → Rounds: ${TOTAL_ROUNDS}" >&2
+fi
+```
+
+**Fallback:** If classifier is unavailable or dynamic rounds is disabled, use the static table below.
 
 ### Step 0.4: Select Model Configuration
 
 Based on MODE, select configurations:
 
-| Mode | Gemini Model | Gemini Thinking | OpenAI Model | OpenAI Reasoning | Rounds |
-|------|--------------|-----------------|--------------|------------------|--------|
-| `review` | flash | high | o3 | medium | 3 |
-| `design` | pro | high | o3 | high | 4 |
-| `debug` | flash | high | o3 | high | 3 |
-| `idea` | pro | high | gpt4o | - | 4 |
-| `general` | flash | medium | gpt4o | - | 3 |
+| Mode | Gemini Model | Gemini Thinking | OpenAI Model | OpenAI Reasoning | Base Rounds | Dynamic |
+|------|--------------|-----------------|--------------|------------------|-------------|---------|
+| `review` | flash | high | o3 | medium | 3 | Yes (2-4) |
+| `design` | pro | high | o3 | high | 4 | Yes (3-4) |
+| `debug` | flash | high | o3 | high | 3 | Yes (2-4) |
+| `idea` | pro | high | gpt4o | - | 4 | Yes (3-4) |
+| `general` | flash | medium | gpt4o | - | 3 | Yes (2-4) |
+
+**Note:** When `SYNOD_V2_DYNAMIC_ROUNDS=1`, round count is determined by complexity analysis from Step 0.3. The "Base Rounds" column is the fallback when dynamic rounds is disabled.
 
 ### Step 0.4b: Extended Model Options (Optional)
 
@@ -162,11 +211,13 @@ Write initial `${SESSION_DIR}/status.json`:
 
 **Announce to user:**
 ```
-[Synod v1.0.1] 세션: {SESSION_ID}
-모드: {MODE} | 유형: {problem_type} | 복잡도: {complexity}
+[Synod v2.0] 세션: {SESSION_ID}
+모드: {MODE} (auto-classified, confidence: {CLASSIFY_CONFIDENCE}) | 유형: {problem_type} | 복잡도: {complexity}
 모델: Gemini {model} ({thinking}) + OpenAI {model} ({reasoning})
-라운드: {total_rounds}
+라운드: {total_rounds} {dynamic: true/false}
 ```
+
+**Note:** When mode was explicitly specified (legacy), show `(explicit, deprecated)` instead of confidence.
 
 Update status.json: `"round_status": {"0": "complete", ...}`
 
@@ -1219,10 +1270,19 @@ mistral-cli --model codestral < prompt.txt  # 코드 특화
 
 | 명령 | 동작 |
 |---------|--------|
-| `/synod review: <code>` | 심각도별 코드 리뷰 |
-| `/synod design: <spec>` | 아키텍처 숙의 |
-| `/synod debug: <error>` | 근본 원인 분석 |
-| `/synod idea: <topic>` | 순위 매김 브레인스토밍 |
-| `/synod <question>` | 일반적인 균형 잡힌 답변 |
+| `/synod <prompt>` | **v2.0: 자동 분류** - 프롬프트 내용으로 모드 자동 감지 |
+| `/synod 이 코드 리뷰해줘` | → auto-classify → review 모드 |
+| `/synod API 설계해줘` | → auto-classify → design 모드 |
+| `/synod 에러 수정해줘` | → auto-classify → debug 모드 |
+| `/synod 아이디어 좀 줘` | → auto-classify → idea 모드 |
 | `/synod resume` | 중단된 세션 계속 |
 | `/cancel-synod` | 현재 세션 중단 (상태 보존) |
+
+**Legacy (deprecated):** `/synod review: <code>`, `/synod design: <spec>` 등 명시적 모드 키워드도 여전히 동작하지만, deprecated 경고가 표시됩니다.
+
+**환경변수:**
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `SYNOD_V2_AUTO_CLASSIFY` | `1` | `0`으로 설정하면 v1.0 모드 동작 |
+| `SYNOD_V2_DYNAMIC_ROUNDS` | `1` | `0`으로 설정하면 고정 라운드 수 사용 |
