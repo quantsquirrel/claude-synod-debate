@@ -40,8 +40,19 @@ except ImportError:
     sys.stderr.write("설치: pip install openai\n")
     sys.exit(1)
 
+# Import model stats for latency tracking
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from model_stats import ModelStats
+
+    _stats_available = True
+except ImportError:
+    _stats_available = False
+
 # API 키 (main()에서 검증)
 api_key = os.environ.get("XAI_API_KEY")
+
+PROVIDER = "grok"
 
 # xAI API base URL
 BASE_URL = "https://api.x.ai/v1"
@@ -53,6 +64,16 @@ MODEL_MAP = {
     "mini": "grok-3-mini",  # 초경량
     "vision": "grok-2-vision-1212",  # 비전 모델
 }
+
+
+def get_model_with_override(model_key: str) -> str:
+    """Get model name with optional environment variable override."""
+    env_var = f"SYNOD_GROK_{model_key.upper()}"
+    override = os.environ.get(env_var)
+    if override:
+        print(f"[Override] Using {override} (via {env_var})", file=sys.stderr)
+        return override
+    return MODEL_MAP.get(model_key, MODEL_MAP["fast"])
 
 # 모델별 타임아웃 설정 (초)
 TIMEOUT_CONFIG = {
@@ -79,8 +100,8 @@ def generate_with_retry(model: str, prompt: str, timeout: int, max_retries: int 
             actual_timeout = TIMEOUT_CONFIG.get(model, timeout)
             client = create_client(actual_timeout)
 
-            # Build request params
-            model_name = MODEL_MAP[model]
+            # Build request params (with env override support)
+            model_name = get_model_with_override(model)
             request_params = {
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
@@ -215,10 +236,28 @@ Features:
         print(f"Timeout: {args.timeout}s", file=sys.stderr)
         print(f"Base URL: {BASE_URL}", file=sys.stderr)
 
-    # Generate with retry
+    # Dynamic timeout: use stats-based P99+epsilon if available
+    effective_timeout = args.timeout
+    if _stats_available and os.environ.get("SYNOD_V2_ADAPTIVE_TIMEOUT", "0") == "1":
+        stats = ModelStats()
+        if stats.has_sufficient_data(PROVIDER, args.model):
+            effective_timeout = int(stats.get_dynamic_timeout(PROVIDER, args.model) / 1000)
+            if args.verbose:
+                print(f"[Adaptive] Timeout: {effective_timeout}s (P99+epsilon)", file=sys.stderr)
+
+    # Generate with retry + latency tracking
+    start_time = time.time()
     response = generate_with_retry(
-        model=args.model, prompt=prompt, timeout=args.timeout, max_retries=args.retries
+        model=args.model, prompt=prompt, timeout=effective_timeout, max_retries=args.retries
     )
+
+    # Record latency stats
+    if _stats_available:
+        latency_ms = (time.time() - start_time) * 1000
+        try:
+            ModelStats().record_latency(PROVIDER, args.model, latency_ms)
+        except Exception:
+            pass
 
     print(response)
 

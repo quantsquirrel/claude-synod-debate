@@ -21,6 +21,15 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# Import model stats for latency tracking
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from model_stats import ModelStats
+
+    _stats_available = True
+except ImportError:
+    _stats_available = False
+
 try:
     from google import genai
     from google.genai import types
@@ -47,6 +56,18 @@ THINKING_MAP = {
 
 # Retry levels (progressive downgrade)
 RETRY_LEVELS = ["high", "medium", "low", "minimal"]
+
+PROVIDER = "gemini"
+
+
+def get_model_with_override(model_key: str) -> str:
+    """Get model name with optional environment variable override."""
+    env_var = f"SYNOD_GEMINI_{model_key.upper().replace('.', '_').replace('-', '_')}"
+    override = os.environ.get(env_var)
+    if override:
+        print(f"[Override] Using {override} (via {env_var})", file=sys.stderr)
+        return override
+    return MODEL_MAP.get(model_key, MODEL_MAP["flash"])
 
 
 def create_client(timeout_ms: int = 300_000) -> genai.Client:
@@ -206,20 +227,32 @@ Examples:
         print("Error: No prompt provided", file=sys.stderr)
         sys.exit(1)
 
+    # Dynamic timeout: use stats-based P99+epsilon if available
+    if _stats_available and os.environ.get("SYNOD_V2_ADAPTIVE_TIMEOUT", "0") == "1":
+        stats = ModelStats()
+        if stats.has_sufficient_data(PROVIDER, args.model):
+            timeout_ms = int(stats.get_dynamic_timeout(PROVIDER, args.model))
+            if args.verbose:
+                print(f"[Adaptive] Timeout: {timeout_ms}ms (P99+epsilon)", file=sys.stderr)
+        else:
+            timeout_ms = args.timeout * 1000
+    else:
+        timeout_ms = args.timeout * 1000
+
     # Create client with timeout
-    timeout_ms = args.timeout * 1000
     client = create_client(timeout_ms)
 
-    # Get model name
-    model_name = MODEL_MAP.get(args.model, MODEL_MAP["flash"])
+    # Get model name (with env override support)
+    model_name = get_model_with_override(args.model)
 
     if args.verbose:
         print(f"Model: {model_name}", file=sys.stderr)
         print(f"Thinking: {args.thinking}", file=sys.stderr)
         print(f"Streaming: {not args.no_stream}", file=sys.stderr)
-        print(f"Timeout: {args.timeout}s", file=sys.stderr)
+        print(f"Timeout: {timeout_ms / 1000:.0f}s", file=sys.stderr)
 
-    # Generate response
+    # Generate response with latency tracking
+    start_time = time.time()
     response = generate_with_retry(
         client=client,
         model=model_name,
@@ -230,6 +263,14 @@ Examples:
         adaptive=not args.no_adaptive,
         temperature=args.temperature,
     )
+
+    # Record latency stats
+    if _stats_available:
+        latency_ms = (time.time() - start_time) * 1000
+        try:
+            ModelStats().record_latency(PROVIDER, args.model, latency_ms)
+        except Exception:
+            pass  # Don't fail on stats recording errors
 
     print(response)
 

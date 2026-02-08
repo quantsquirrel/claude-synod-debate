@@ -41,6 +41,17 @@ except ImportError:
     print("Error: mistralai not installed. Run: pip install mistralai", file=sys.stderr)
     sys.exit(1)
 
+# Import model stats for latency tracking
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from model_stats import ModelStats
+
+    _stats_available = True
+except ImportError:
+    _stats_available = False
+
+PROVIDER = "mistral"
+
 # Model mapping
 MODEL_MAP = {
     "large": "mistral-large-latest",
@@ -49,6 +60,16 @@ MODEL_MAP = {
     "codestral": "codestral-latest",
     "devstral": "devstral-2",
 }
+
+
+def get_model_with_override(model_key: str) -> str:
+    """Get model name with optional environment variable override."""
+    env_var = f"SYNOD_MISTRAL_{model_key.upper()}"
+    override = os.environ.get(env_var)
+    if override:
+        print(f"[Override] Using {override} (via {env_var})", file=sys.stderr)
+        return override
+    return MODEL_MAP.get(model_key, MODEL_MAP["medium"])
 
 # Default timeout per model (seconds)
 DEFAULT_TIMEOUT = {
@@ -197,11 +218,19 @@ Examples:
     # Determine timeout
     timeout = args.timeout if args.timeout else DEFAULT_TIMEOUT[args.model]
 
+    # Dynamic timeout: use stats-based P99+epsilon if available
+    if _stats_available and os.environ.get("SYNOD_V2_ADAPTIVE_TIMEOUT", "0") == "1":
+        stats = ModelStats()
+        if stats.has_sufficient_data(PROVIDER, args.model):
+            timeout = int(stats.get_dynamic_timeout(PROVIDER, args.model) / 1000)
+            if args.verbose:
+                print(f"[Adaptive] Timeout: {timeout}s (P99+epsilon)", file=sys.stderr)
+
     # Create client with timeout
     client = create_client(timeout)
 
-    # Get model name
-    model_name = MODEL_MAP[args.model]
+    # Get model name (with env override support)
+    model_name = get_model_with_override(args.model)
 
     if args.verbose:
         print(f"Model: {model_name}", file=sys.stderr)
@@ -209,9 +238,9 @@ Examples:
         print(f"Streaming: {not args.no_stream}", file=sys.stderr)
         print(f"Timeout: {timeout}s", file=sys.stderr)
 
-    # Generate response
+    # Generate response with latency tracking
+    start_time = time.time()
     if not args.no_stream:
-        # Streaming prints inline, return value is for consistency
         generate_with_retry(
             client=client,
             model=model_name,
@@ -221,7 +250,6 @@ Examples:
             max_retries=args.retries,
         )
     else:
-        # Non-streaming prints at the end
         response = generate_with_retry(
             client=client,
             model=model_name,
@@ -231,6 +259,14 @@ Examples:
             max_retries=args.retries,
         )
         print(response)
+
+    # Record latency stats
+    if _stats_available:
+        latency_ms = (time.time() - start_time) * 1000
+        try:
+            ModelStats().record_latency(PROVIDER, args.model, latency_ms)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

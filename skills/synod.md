@@ -24,6 +24,8 @@ You are the **Synod Orchestrator** - a judicial coordinator managing a multi-mod
 |----------|--------|------|
 | `SYNOD_V2_AUTO_CLASSIFY` | `1` | 자동 분류 활성화 (`0`=disabled, legacy mode) |
 | `SYNOD_V2_DYNAMIC_ROUNDS` | `1` | 동적 라운드 수 결정 활성화 (`0`=disabled) |
+| `SYNOD_V2_CANARY` | `0` | Canary pre-sampling 활성화 (`1`=enabled) |
+| `SYNOD_V2_ADAPTIVE_TIMEOUT` | `0` | 적응형 타임아웃 활성화 (`1`=enabled) |
 
 ---
 
@@ -183,6 +185,45 @@ fi
 **Note:** When `SYNOD_V2_DYNAMIC_ROUNDS=1`, round count is determined by complexity analysis from Step 0.3. The "Base Rounds" column is the fallback when dynamic rounds is disabled.
 
 **Note:** Run `/synod-setup` to generate `~/.synod/setup-result.json`. Without it, the static table above is used as-is.
+
+### Step 0.4a: Canary Pre-Sampling (v2.0)
+
+**When enabled** (`SYNOD_V2_CANARY=1`), probe model health before full requests:
+
+```bash
+if [[ "${SYNOD_V2_CANARY:-0}" == "1" ]]; then
+    echo "[Canary] Pre-sampling model health..." >&2
+
+    # Probe Gemini
+    if [[ -n "$GEMINI_MODEL" ]]; then
+        CANARY_GEMINI=$(python3 "${TOOLS_DIR}/synod-canary.py" --provider gemini --model "$GEMINI_MODEL" --quiet 2>/dev/null)
+        if echo "$CANARY_GEMINI" | python3 -c "import sys,json; sys.exit(0 if not json.load(sys.stdin).get('fallback_recommended') else 1)" 2>/dev/null; then
+            : # Gemini healthy
+        else
+            echo "[Canary] Gemini ${GEMINI_MODEL} unhealthy, falling back to flash" >&2
+            GEMINI_MODEL="flash"
+        fi
+    fi
+
+    # Probe OpenAI
+    if [[ -n "$OPENAI_MODEL" ]]; then
+        CANARY_OPENAI=$(python3 "${TOOLS_DIR}/synod-canary.py" --provider openai --model "$OPENAI_MODEL" --quiet 2>/dev/null)
+        if echo "$CANARY_OPENAI" | python3 -c "import sys,json; sys.exit(0 if not json.load(sys.stdin).get('fallback_recommended') else 1)" 2>/dev/null; then
+            : # OpenAI healthy
+        else
+            echo "[Canary] OpenAI ${OPENAI_MODEL} unhealthy, falling back to gpt4o" >&2
+            OPENAI_MODEL="gpt4o"
+        fi
+    fi
+fi
+```
+
+**Short-circuit conditions:**
+- Canary latency > P95 → fallback to lighter model
+- Canary fails (error/timeout) → fallback to lighter model
+- Canary succeeds → use originally selected model
+
+**Note:** Canary results are cached for 5 minutes. First probe may add ~2s overhead. Use `--no-cache` flag to force fresh probe.
 
 ### Step 0.4b: Extended Model Options (Optional)
 
@@ -1346,3 +1387,5 @@ mistral-cli --model codestral < prompt.txt  # 코드 특화
 |------|--------|------|
 | `SYNOD_V2_AUTO_CLASSIFY` | `1` | `0`으로 설정하면 v1.0 모드 동작 |
 | `SYNOD_V2_DYNAMIC_ROUNDS` | `1` | `0`으로 설정하면 고정 라운드 수 사용 |
+| `SYNOD_V2_CANARY` | `0` | `1`로 설정하면 canary pre-sampling 활성화 |
+| `SYNOD_V2_ADAPTIVE_TIMEOUT` | `0` | `1`로 설정하면 P99+epsilon 적응형 타임아웃 활성화 |

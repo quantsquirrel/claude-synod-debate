@@ -31,8 +31,19 @@ except ImportError:
     sys.stderr.write("설치: pip install openai\n")
     sys.exit(1)
 
+# Import model stats for latency tracking
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from model_stats import ModelStats
+
+    _stats_available = True
+except ImportError:
+    _stats_available = False
+
 # API 키 (main()에서 검증)
 api_key = os.environ.get("GROQ_API_KEY")
+
+PROVIDER = "groq"
 
 # 모델 매핑
 MODEL_MAP = {
@@ -40,6 +51,16 @@ MODEL_MAP = {
     "70b": "llama-3.1-70b-versatile",
     "mixtral": "mixtral-8x7b-32768",
 }
+
+
+def get_model_with_override(model_key: str) -> str:
+    """Get model name with optional environment variable override."""
+    env_var = f"SYNOD_GROQ_{model_key.upper()}"
+    override = os.environ.get(env_var)
+    if override:
+        print(f"[Override] Using {override} (via {env_var})", file=sys.stderr)
+        return override
+    return MODEL_MAP.get(model_key, MODEL_MAP["8b"])
 
 # 모델별 타임아웃 설정 (초) - Groq는 초고속!
 TIMEOUT_CONFIG = {
@@ -67,8 +88,8 @@ def generate_with_retry(model: str, prompt: str, timeout: int, max_retries: int 
             actual_timeout = TIMEOUT_CONFIG.get(model, timeout)
             client = create_client(actual_timeout)
 
-            # Build request params
-            model_name = MODEL_MAP[model]
+            # Build request params (with env override support)
+            model_name = get_model_with_override(model)
             request_params = {
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
@@ -208,16 +229,30 @@ Groq 특징:
     # 타임아웃 설정
     timeout = args.timeout if args.timeout else TIMEOUT_CONFIG[args.model]
 
+    # Dynamic timeout: use stats-based P99+epsilon if available
+    if _stats_available and os.environ.get("SYNOD_V2_ADAPTIVE_TIMEOUT", "0") == "1":
+        stats = ModelStats()
+        if stats.has_sufficient_data(PROVIDER, args.model):
+            timeout = int(stats.get_dynamic_timeout(PROVIDER, args.model) / 1000)
+            if args.verbose:
+                print(f"[Adaptive] Timeout: {timeout}s (P99+epsilon)", file=sys.stderr)
+
     if args.verbose:
-        print(f"Model: {MODEL_MAP[args.model]}", file=sys.stderr)
+        print(f"Model: {get_model_with_override(args.model)}", file=sys.stderr)
         print(f"Timeout: {timeout}s", file=sys.stderr)
         print("Base URL: https://api.groq.com/openai/v1", file=sys.stderr)
 
-    # Generate with retry
+    # Generate with retry + latency tracking
+    start_time = time.time()
     generate_with_retry(model=args.model, prompt=prompt, timeout=timeout, max_retries=args.retries)
 
-    # 스트리밍 모드에서는 이미 출력됨
-    # print(response)
+    # Record latency stats
+    if _stats_available:
+        latency_ms = (time.time() - start_time) * 1000
+        try:
+            ModelStats().record_latency(PROVIDER, args.model, latency_ms)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
