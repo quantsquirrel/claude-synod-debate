@@ -72,7 +72,7 @@ def get_model_with_override(model_key: str) -> str:
 
 def create_client(timeout_ms: int = 300_000) -> genai.Client:
     """Create Gemini client with timeout."""
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         print("Error: GEMINI_API_KEY environment variable not set", file=sys.stderr)
         sys.exit(1)

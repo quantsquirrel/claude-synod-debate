@@ -97,7 +97,7 @@ flowchart TB
 export GEMINI_API_KEY="your-gemini-key"
 export OPENAI_API_KEY="your-openai-key"
 
-# 3️⃣ Test your setup (recommended)
+# 3️⃣ Run setup (installs deps, configures CLI tools, tests models)
 /synod-setup
 
 # 4️⃣ Summon the council
@@ -350,8 +350,18 @@ Trust Score = ──────────────────────
 <br/>
 
 ```bash
+# Install plugin
 /plugin install quantsquirrel/claude-synod-debate
+
+# Set API keys
+export GEMINI_API_KEY="your-gemini-key"
+export OPENAI_API_KEY="your-openai-key"
+
+# Run setup (auto-installs Python deps, creates CLI wrappers, tests models)
+/synod-setup
 ```
+
+`/synod-setup` handles everything: Python dependencies (`google-genai`, `openai`, `httpx`), CLI tool wrappers in `~/.synod/bin/`, API key validation, and model connectivity testing.
 
 </details>
 
@@ -362,11 +372,12 @@ Trust Score = ──────────────────────
 
 ```bash
 git clone https://github.com/quantsquirrel/claude-synod-debate.git
-cd synod
-pip install -r requirements.txt
+cd claude-synod-debate
+pip install google-genai openai httpx
 cp skills/*.md ~/.claude/commands/
-chmod +x tools/*.py
-export PATH="$PATH:$(pwd)/tools"
+
+# Run setup to create CLI wrappers and test models
+python3 tools/synod-setup.py
 ```
 
 </details>

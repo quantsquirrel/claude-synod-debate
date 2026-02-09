@@ -97,7 +97,10 @@ flowchart TB
 export GEMINI_API_KEY="your-gemini-key"
 export OPENAI_API_KEY="your-openai-key"
 
-# 3️⃣ 의회 소집
+# 3️⃣ 초기 설정 (의존성 설치, CLI 구성, 모델 테스트)
+/synod-setup
+
+# 4️⃣ 의회 소집
 /synod review 이 인증 플로우가 안전한가요?
 ```
 
@@ -278,8 +281,18 @@ Synod는 **CortexDebate** 공식으로 신뢰를 계산합니다:
 <br/>
 
 ```bash
+# 플러그인 설치
 /plugin install quantsquirrel/claude-synod-debate
+
+# API 키 설정
+export GEMINI_API_KEY="your-gemini-key"
+export OPENAI_API_KEY="your-openai-key"
+
+# 초기 설정 (Python 의존성 설치, CLI 래퍼 생성, 모델 테스트 자동 처리)
+/synod-setup
 ```
+
+`/synod-setup`이 모든 것을 처리합니다: Python 의존성 (`google-genai`, `openai`, `httpx`), `~/.synod/bin/`에 CLI 래퍼 생성, API 키 검증, 모델 연결 테스트.
 
 </details>
 
@@ -290,11 +303,12 @@ Synod는 **CortexDebate** 공식으로 신뢰를 계산합니다:
 
 ```bash
 git clone https://github.com/quantsquirrel/claude-synod-debate.git
-cd synod
-pip install -r requirements.txt
+cd claude-synod-debate
+pip install google-genai openai httpx
 cp skills/*.md ~/.claude/commands/
-chmod +x tools/*.py
-export PATH="$PATH:$(pwd)/tools"
+
+# 초기 설정 (CLI 래퍼 생성 및 모델 테스트)
+python3 tools/synod-setup.py
 ```
 
 </details>

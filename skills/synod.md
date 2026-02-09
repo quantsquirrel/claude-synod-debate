@@ -44,7 +44,34 @@ ELSE IF $1 in [review, design, debug, idea]:
 ELSE:
     # v2.0: Auto-classify mode from prompt content
     PROBLEM = $ARGUMENTS
-    TOOLS_DIR="$(dirname "$(readlink -f "$0")")/../tools"  # Resolve tools/ path
+
+    # Resolve TOOLS_DIR from setup result or known locations
+    SETUP_FILE="$HOME/.synod/setup-result.json"
+    SYNOD_BIN="$HOME/.synod/bin"
+
+    if [[ -f "$SETUP_FILE" ]]; then
+        TOOLS_DIR=$(python3 -c "import json; print(json.load(open('$SETUP_FILE')).get('tools_dir',''))" 2>/dev/null)
+    fi
+    if [[ -z "$TOOLS_DIR" ]] || [[ ! -d "$TOOLS_DIR" ]]; then
+        TOOLS_DIR=$(find "$HOME/.claude/plugins" -name "synod-classifier.py" -path "*/tools/*" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
+    fi
+    if [[ -z "$TOOLS_DIR" ]] || [[ ! -d "$TOOLS_DIR" ]]; then
+        echo "[Synod Error] tools/ 디렉토리를 찾을 수 없습니다. /synod-setup을 먼저 실행하세요." >&2
+    fi
+
+    # CLI resolution: check ~/.synod/bin/ → ~/.local/bin/ → PATH → python3 direct
+    resolve_cli() {
+        local cmd="$1"
+        if [[ -x "$SYNOD_BIN/$cmd" ]]; then echo "$SYNOD_BIN/$cmd"; return 0; fi
+        if [[ -x "$HOME/.local/bin/$cmd" ]]; then echo "$HOME/.local/bin/$cmd"; return 0; fi
+        if command -v "$cmd" &>/dev/null; then command -v "$cmd"; return 0; fi
+        if [[ -f "${TOOLS_DIR}/${cmd}.py" ]]; then echo "python3 ${TOOLS_DIR}/${cmd}.py"; return 0; fi
+        return 1
+    }
+
+    GEMINI_CLI=$(resolve_cli "gemini-3")
+    OPENAI_CLI=$(resolve_cli "openai-cli")
+    SYNOD_PARSER_CLI=$(resolve_cli "synod-parser")
 
     if [[ "${SYNOD_V2_AUTO_CLASSIFY:-1}" == "1" ]]; then
         CLASSIFY_RESULT=$(python3 "${TOOLS_DIR}/synod-classifier.py" "$PROBLEM" 2>/dev/null)
@@ -430,7 +457,7 @@ TEMP_DIR="/tmp/synod-${SESSION_ID}"
 
 # Gemini execution with completion marker
 (
-  gemini-3 --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout 110 \
+  $GEMINI_CLI --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout 110 \
     < "${TEMP_DIR}/gemini-prompt.txt" \
     > "${TEMP_DIR}/gemini-response.txt" 2>&1
   echo $? > "${TEMP_DIR}/gemini-exit-code"
@@ -439,7 +466,7 @@ GEMINI_PID=$!
 
 # OpenAI execution with completion marker
 (
-  openai-cli --model {OPENAI_MODEL} {--reasoning REASONING if o3} --timeout 110 \
+  $OPENAI_CLI --model {OPENAI_MODEL} {--reasoning REASONING if o3} --timeout 110 \
     < "${TEMP_DIR}/openai-prompt.txt" \
     > "${TEMP_DIR}/openai-response.txt" 2>&1
   echo $? > "${TEMP_DIR}/openai-exit-code"
@@ -500,8 +527,8 @@ For each response, validate SID format:
 
 ```bash
 # Validate with fallback
-if command -v synod-parser &>/dev/null; then
-  synod-parser --validate "$(cat ${TEMP_DIR}/gemini-response.txt)"
+if [[ -n "$SYNOD_PARSER_CLI" ]]; then
+  $SYNOD_PARSER_CLI --validate "$(cat ${TEMP_DIR}/gemini-response.txt)"
   PARSER_EXIT=$?
 else
   echo "[Warning] synod-parser not found - using inline validation"
@@ -542,8 +569,8 @@ parse_response() {
   local input_file="$1"
   local output_file="$2"
 
-  if command -v synod-parser &>/dev/null; then
-    synod-parser "$(cat "$input_file")" > "$output_file"
+  if [[ -n "$SYNOD_PARSER_CLI" ]]; then
+    $SYNOD_PARSER_CLI "$(cat "$input_file")" > "$output_file"
   else
     # Minimal inline parser
     local content
@@ -702,7 +729,7 @@ Validate claims from the Solver round. Focus on:
 Execute:
 ```bash
 # Gemini Critic execution (medium thinking for analytical evaluation)
-gemini-3 --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout 120 < "${TEMP_DIR}/gemini-critic-prompt.txt" > "${TEMP_DIR}/gemini-critique.txt" 2>&1 &
+$GEMINI_CLI --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout 120 < "${TEMP_DIR}/gemini-critic-prompt.txt" > "${TEMP_DIR}/gemini-critique.txt" 2>&1 &
 ```
 
 ### Step 2.3: OpenAI Critic Execution
@@ -801,7 +828,7 @@ The formula is capped at 2.0 to prevent unbounded scores when Self-Orientation (
 - S = 1.0 (extreme bias) with perfect C/R/I → T = min(1.0, 2.0) = 1.0
 
 ```bash
-synod-parser --trust {C} {R} {I} {S}  # Parser handles capping internally
+$SYNOD_PARSER_CLI --trust {C} {R} {I} {S}  # Parser handles capping internally
 ```
 
 **Thresholds:**
@@ -1133,13 +1160,13 @@ Update status.json:
 ### Timeout Fallback Chain
 
 **If Gemini times out (120s):**
-1. Retry: `gemini-3 --model flash --thinking medium` (downgrade)
-2. Retry: `gemini-3 --model flash --thinking low`
+1. Retry: `$GEMINI_CLI --model flash --thinking medium` (downgrade)
+2. Retry: `$GEMINI_CLI --model flash --thinking low`
 3. Final: Continue without Gemini, note in synthesis: "[Gemini 사용 불가 - 시간 초과]"
 
 **If OpenAI times out (120s):**
-1. Retry: `openai-cli --model o3 --reasoning medium` (downgrade)
-2. Retry: `openai-cli --model gpt4o`
+1. Retry: `$OPENAI_CLI --model o3 --reasoning medium` (downgrade)
+2. Retry: `$OPENAI_CLI --model gpt4o`
 3. Final: Continue without OpenAI, note in synthesis: "[OpenAI 사용 불가 - 시간 초과]"
 
 **Extended Provider Fallbacks:**
@@ -1183,7 +1210,7 @@ Your original answer (keep this, just add XML at end):
 **If still malformed after retries:**
 ```bash
 # Apply defaults via parser
-synod-parser "$(cat response.txt)"  # Returns defaults with format_warning
+$SYNOD_PARSER_CLI "$(cat response.txt)"  # Returns defaults with format_warning
 ```
 
 Default values:
@@ -1325,19 +1352,20 @@ find .omc/synod -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
 ## Prerequisites: CLI Tool Support
 
 ### Gemini CLI (`gemini-3`)
-필수 플래그:
+필수 플래그 (CLI는 `~/.synod/bin/gemini-3` 또는 `~/.local/bin/gemini-3`에 위치):
 ```bash
-gemini-3 --model flash --thinking high --timeout 110 < prompt.txt
+$GEMINI_CLI --model flash --thinking high --timeout 110 < prompt.txt
 ```
 
 ### OpenAI CLI (`openai-cli`)
+CLI는 `~/.synod/bin/openai-cli` 또는 `~/.local/bin/openai-cli`에 위치:
 - **o3**: Reasoning effort 제어
   ```bash
-  openai-cli --model o3 --reasoning high < prompt.txt
+  $OPENAI_CLI --model o3 --reasoning high < prompt.txt
   ```
 - **gpt4o**: 일반 chat 모델
   ```bash
-  openai-cli --model gpt4o < prompt.txt
+  $OPENAI_CLI --model gpt4o < prompt.txt
   ```
 
 ### DeepSeek CLI (`deepseek-cli`)

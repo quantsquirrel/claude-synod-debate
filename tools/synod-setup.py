@@ -2,24 +2,55 @@
 """
 synod-setup - Synod 초기 설정 및 모델 가용성 테스트
 
+Handles: dependency installation, CLI wrapper creation, API key validation, model testing.
+
 Usage:
     synod-setup
+    synod-setup --skip-deps
 """
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-# 테스트할 모델 정의
+# Paths
+TOOLS_DIR = Path(__file__).parent
+SYNOD_DIR = Path("~/.synod").expanduser()
+SYNOD_BIN = SYNOD_DIR / "bin"
+
+# CLI wrapper targets: command_name -> script_filename
+CLI_TOOLS = {
+    "gemini-3": "gemini-3.py",
+    "openai-cli": "openai-cli.py",
+    "deepseek-cli": "deepseek-cli.py",
+    "groq-cli": "groq-cli.py",
+    "grok-cli": "grok-cli.py",
+    "mistral-cli": "mistral-cli.py",
+    "openrouter-cli": "openrouter-cli.py",
+    "synod-parser": "synod-parser.py",
+    "synod-classifier": "synod-classifier.py",
+    "synod-canary": "synod-canary.py",
+}
+
+# Required Python packages: pip_name -> import_name
+REQUIRED_PACKAGES = {
+    "google-genai": "google.genai",
+    "openai": "openai",
+    "httpx": "httpx",
+}
+
+# Provider definitions for testing
 MODELS_TO_TEST = {
     "gemini": {
         "cli": "gemini-3.py",
         "models": ["flash", "pro"],
-        "env_key": "GOOGLE_API_KEY",
+        "env_key": "GEMINI_API_KEY",
+        "env_key_compat": "GOOGLE_API_KEY",
     },
     "openai": {
         "cli": "openai-cli.py",
@@ -53,7 +84,6 @@ MODELS_TO_TEST = {
     },
 }
 
-# 테스트 대상 모델 (Gemini + OpenAI + OpenRouter 핵심 모델)
 TEST_TARGETS = [
     ("gemini", "flash"),
     ("gemini", "pro"),
@@ -62,10 +92,7 @@ TEST_TARGETS = [
     ("openrouter", "claude"),
 ]
 
-# 테스트 프롬프트 (Synod Solver와 유사한 복잡도)
 TEST_PROMPT = "Explain the SOLID principles in software engineering in 3 sentences."
-
-# 타임아웃 기준 (초)
 TIMEOUT_THRESHOLD = 120
 SLOW_THRESHOLD = 60
 
@@ -80,25 +107,144 @@ class TestResult:
     error: str | None = None
 
 
-def check_cli_exists(provider: str) -> tuple[bool, str]:
-    """CLI 도구 존재 확인."""
-    cli_name = MODELS_TO_TEST[provider]["cli"]
-    tools_dir = Path(__file__).parent
-    cli_path = tools_dir / cli_name
-    return cli_path.exists(), str(cli_path)
+# ---------------------------------------------------------------------------
+# Step 0: Dependency Installation
+# ---------------------------------------------------------------------------
+
+
+def check_and_install_dependencies(skip: bool = False) -> bool:
+    """Check and install required Python packages."""
+    print("Step 0/3: Python 의존성 확인")
+
+    missing = []
+    for pip_name, import_name in REQUIRED_PACKAGES.items():
+        module = import_name.split(".")[0]
+        try:
+            __import__(module)
+            print(f"  ✓ {pip_name} 설치됨")
+        except ImportError:
+            print(f"  ✗ {pip_name} 미설치")
+            missing.append(pip_name)
+
+    if not missing:
+        return True
+
+    if skip:
+        print(f"\n  [건너뜀] --skip-deps 플래그로 의존성 설치를 건너뜁니다.")
+        print(f"  수동 설치: pip install {' '.join(missing)}")
+        return False
+
+    print(f"\n  {len(missing)}개 패키지 설치 중: {', '.join(missing)}")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--user"] + missing,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            print("  ✓ 의존성 설치 완료")
+            return True
+        else:
+            stderr = result.stderr or ""
+            if "externally-managed-environment" in stderr:
+                print("  ✗ 시스템 Python이 외부 관리 모드입니다 (PEP 668).")
+                print(f"  수동 설치: pip install --break-system-packages {' '.join(missing)}")
+                print("  또는 venv 사용을 권장합니다.")
+            else:
+                print(f"  ✗ 설치 실패: {stderr[:200]}")
+            return False
+    except subprocess.TimeoutExpired:
+        print("  ✗ 설치 타임아웃 (120초)")
+        return False
+    except Exception as e:
+        print(f"  ✗ 설치 오류: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Step 1: CLI Wrapper Installation
+# ---------------------------------------------------------------------------
+
+
+def install_cli_wrappers() -> dict[str, str]:
+    """Create wrapper scripts in ~/.synod/bin/ for all available CLI tools."""
+    print(f"\nStep 1/3: CLI 도구 설치 ({SYNOD_BIN})")
+    SYNOD_BIN.mkdir(parents=True, exist_ok=True)
+
+    results = {}
+    for cmd_name, filename in CLI_TOOLS.items():
+        source = TOOLS_DIR / filename
+        if not source.exists():
+            results[cmd_name] = "not_found"
+            continue
+
+        target = SYNOD_BIN / cmd_name
+        wrapper_content = f"#!/bin/sh\nexec python3 \"{source}\" \"$@\"\n"
+
+        # Write wrapper script
+        target.write_text(wrapper_content)
+        target.chmod(target.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        results[cmd_name] = "installed"
+        print(f"  ✓ {cmd_name} 설치됨")
+
+    not_found = [k for k, v in results.items() if v == "not_found"]
+    if not_found:
+        print(f"  [참고] {len(not_found)}개 도구 원본 없음: {', '.join(not_found)}")
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Step 2: API Key Validation
+# ---------------------------------------------------------------------------
 
 
 def check_api_key(provider: str) -> tuple[bool, str]:
-    """API 키 환경변수 확인."""
-    env_key = MODELS_TO_TEST[provider]["env_key"]
+    """API key check with backward compatibility for Gemini."""
+    config = MODELS_TO_TEST[provider]
+    env_key = config["env_key"]
     has_key = os.environ.get(env_key) is not None
+
+    # Backward compat: check alternate key name for Gemini
+    if not has_key and "env_key_compat" in config:
+        compat_key = config["env_key_compat"]
+        if os.environ.get(compat_key):
+            has_key = True
+            env_key = f"{compat_key} (호환 - {config['env_key']} 권장)"
+
     return has_key, env_key
 
 
+def check_all_api_keys() -> list[str]:
+    """Check API keys for all providers with available CLI tools."""
+    print("\nStep 2/3: API 키 확인")
+    providers_with_keys = []
+
+    for provider in MODELS_TO_TEST:
+        cli_path = TOOLS_DIR / MODELS_TO_TEST[provider]["cli"]
+        if not cli_path.exists():
+            continue
+
+        has_key, env_key = check_api_key(provider)
+        icon = "✓" if has_key else "✗"
+        status = "설정됨" if has_key else "설정 안됨"
+        print(f"  {icon} {env_key} ({status})")
+        if has_key:
+            providers_with_keys.append(provider)
+
+    return providers_with_keys
+
+
+# ---------------------------------------------------------------------------
+# Step 3: Model Testing
+# ---------------------------------------------------------------------------
+
+
 def test_model(provider: str, model: str, timeout: int = TIMEOUT_THRESHOLD) -> TestResult:
-    """모델에 테스트 프롬프트 전송 및 응답 시간 측정."""
+    """Send test prompt to a model and measure response time."""
     cli_name = MODELS_TO_TEST[provider]["cli"]
-    cli_path = Path(__file__).parent / cli_name
+    cli_path = TOOLS_DIR / cli_name
 
     start_time = time.time()
     try:
@@ -111,7 +257,6 @@ def test_model(provider: str, model: str, timeout: int = TIMEOUT_THRESHOLD) -> T
         latency = time.time() - start_time
 
         if result.returncode == 0:
-            # 응답 시간 기준 분류
             if latency < 10:
                 status = "recommended"
             elif latency < SLOW_THRESHOLD:
@@ -157,7 +302,7 @@ def test_model(provider: str, model: str, timeout: int = TIMEOUT_THRESHOLD) -> T
 
 
 def print_results(results: list[TestResult]) -> None:
-    """결과 출력."""
+    """Print test results table."""
     print("\nProvider    Model              Latency    Status")
     print("─" * 55)
 
@@ -178,28 +323,34 @@ def print_results(results: list[TestResult]) -> None:
 
 
 def generate_recommendations(results: list[TestResult]) -> dict:
-    """권장 설정 생성."""
+    """Generate recommended model settings per provider."""
     recommendations = {}
-
-    # Provider별 가장 좋은 모델 선택
     for provider in ["gemini", "openai"]:
         provider_results = [r for r in results if r.provider == provider and r.success]
         if provider_results:
-            # recommended > usable > slow 순서로 정렬
             status_order = {"recommended": 0, "usable": 1, "slow": 2}
-            best = min(provider_results, key=lambda r: (status_order.get(r.status, 99), r.latency_sec))
+            best = min(
+                provider_results,
+                key=lambda r: (status_order.get(r.status, 99), r.latency_sec),
+            )
             recommendations[provider] = best.model
-
     return recommendations
 
 
+# ---------------------------------------------------------------------------
+# Save Results
+# ---------------------------------------------------------------------------
+
+
 def save_results(results: list[TestResult], recommendations: dict) -> None:
-    """결과를 JSON 파일로 저장."""
-    output_path = Path("~/.synod/setup-result.json").expanduser()
+    """Save results to JSON file with path information for synod.md."""
+    output_path = SYNOD_DIR / "setup-result.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     data = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "tools_dir": str(TOOLS_DIR),
+        "synod_bin": str(SYNOD_BIN),
         "results": [
             {
                 "provider": r.provider,
@@ -220,34 +371,28 @@ def save_results(results: list[TestResult], recommendations: dict) -> None:
     print(f"\n[저장됨] {output_path}")
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
 def main():
     print("[Synod Setup] 초기 설정을 시작합니다...\n")
 
-    # Step 1: CLI 도구 확인
-    print("Step 1/3: CLI 도구 확인")
-    available_providers = []
-    for provider in MODELS_TO_TEST:
-        exists, path = check_cli_exists(provider)
-        icon = "✓" if exists else "✗"
-        print(f"  {icon} {MODELS_TO_TEST[provider]['cli']}")
-        if exists:
-            available_providers.append(provider)
+    skip_deps = "--skip-deps" in sys.argv
 
-    # Step 2: API 키 확인
-    print("\nStep 2/3: API 키 확인")
-    providers_with_keys = []
-    for provider in available_providers:
-        has_key, env_key = check_api_key(provider)
-        icon = "✓" if has_key else "✗"
-        status = "설정됨" if has_key else "설정 안됨"
-        print(f"  {icon} {env_key} ({status})")
-        if has_key:
-            providers_with_keys.append(provider)
+    # Step 0: Dependencies
+    deps_ok = check_and_install_dependencies(skip=skip_deps)
 
-    # Step 3: 모델 테스트
+    # Step 1: CLI wrappers
+    cli_results = install_cli_wrappers()
+
+    # Step 2: API keys
+    providers_with_keys = check_all_api_keys()
+
+    # Step 3: Model testing
     print(f"\nStep 3/3: 모델 응답 시간 측정 (타임아웃: {TIMEOUT_THRESHOLD}초)")
 
-    # 테스트 대상: Gemini + OpenAI 핵심 모델
     targets = [
         (provider, model)
         for provider, model in TEST_TARGETS
@@ -256,6 +401,10 @@ def main():
 
     if not targets:
         print("\n[오류] 테스트 가능한 모델이 없습니다. API 키를 확인하세요.")
+        print("  export GEMINI_API_KEY='your-key'")
+        print("  export OPENAI_API_KEY='your-key'")
+        # Still save partial results (path info is useful even without model tests)
+        save_results([], {})
         sys.exit(1)
 
     results = []
@@ -266,10 +415,8 @@ def main():
         icon = "✓" if result.success else "✗"
         print(f" {icon} ({result.latency_sec:.1f}s)")
 
-    # 결과 출력
     print_results(results)
 
-    # 권장 설정
     recommendations = generate_recommendations(results)
     if recommendations:
         print("\n[권장 환경변수 설정]")
@@ -278,10 +425,8 @@ def main():
         if "openai" in recommendations:
             print(f"  export SYNOD_OPENAI_MODEL={recommendations['openai']}")
 
-    # 결과 저장
     save_results(results, recommendations)
 
-    # 최종 상태
     success_count = sum(1 for r in results if r.success)
     total_count = len(results)
     print(f"\n[완료] {success_count}/{total_count} 모델 사용 가능")
@@ -289,8 +434,11 @@ def main():
     if success_count >= 2:
         print("Synod를 사용할 준비가 되었습니다!")
         sys.exit(0)
+    elif success_count >= 1:
+        print("1개 모델만 사용 가능합니다. Claude + 1 모델로 동작합니다.")
+        sys.exit(0)
     else:
-        print("최소 2개 모델이 필요합니다. 설정을 확인하세요.")
+        print("사용 가능한 외부 모델이 없습니다. API 키와 네트워크를 확인하세요.")
         sys.exit(1)
 
 
