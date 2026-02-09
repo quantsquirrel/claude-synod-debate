@@ -394,11 +394,6 @@ class TestAPIKeyValidation:
             provider = provider_class()
             api_key_env = provider.API_KEY_ENV
 
-            # Skip providers with custom validation that doesn't strip
-            # Gemini has custom validation that returns raw value
-            if filename == "gemini-3.py":
-                continue
-
             # Set key with whitespace
             test_key = "  test_key_with_spaces  \n"
             monkeypatch.setenv(api_key_env, test_key)
@@ -412,11 +407,6 @@ class TestAPIKeyValidation:
         for filename, provider_class in PROVIDERS.items():
             provider = provider_class()
             api_key_env = provider.API_KEY_ENV
-
-            # Skip providers with custom validation
-            # Gemini has custom validation that doesn't strip/check empty
-            if filename == "gemini-3.py":
-                continue
 
             # Set empty key
             monkeypatch.setenv(api_key_env, "   \n\t  ")

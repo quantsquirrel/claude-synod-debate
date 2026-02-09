@@ -58,12 +58,11 @@ class GeminiProvider(BaseProvider):
     RETRY_LEVELS = ["high", "medium", "low", "minimal"]
 
     def validate_api_key(self) -> str:
-        """Validate and return API key (supports both GEMINI_API_KEY and GOOGLE_API_KEY)."""
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            print("Error: GEMINI_API_KEY environment variable not set", file=sys.stderr)
-            sys.exit(1)
-        return api_key
+        """Validate API key with GOOGLE_API_KEY fallback."""
+        # GOOGLE_API_KEY fallback: GEMINI_API_KEY 미설정 시 복사
+        if not os.environ.get("GEMINI_API_KEY") and os.environ.get("GOOGLE_API_KEY"):
+            os.environ["GEMINI_API_KEY"] = os.environ["GOOGLE_API_KEY"]
+        return super().validate_api_key()
 
     def create_client(self, timeout_ms: int):
         """Create Gemini client with timeout."""

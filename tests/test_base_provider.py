@@ -423,6 +423,56 @@ class TestGetTimeoutMs:
         timeout = provider.get_timeout_ms(args, "default", default_ms=120_000)
         assert timeout == 120_000
 
+    @patch("base_provider._stats_available", True)
+    @patch("base_provider.ModelStats")
+    def test_get_timeout_adaptive_with_sufficient_data(self, mock_stats_cls, monkeypatch):
+        """Test adaptive timeout uses dynamic value when sufficient data exists."""
+        monkeypatch.setenv("SYNOD_V2_ADAPTIVE_TIMEOUT", "1")
+        mock_stats = MagicMock()
+        mock_stats.has_sufficient_data.return_value = True
+        mock_stats.get_dynamic_timeout.return_value = 45_000
+        mock_stats_cls.return_value = mock_stats
+
+        provider = MockProvider()
+        args = argparse.Namespace(timeout=None, verbose=False)
+        timeout = provider.get_timeout_ms(args, "default")
+        assert timeout == 45_000
+        mock_stats.has_sufficient_data.assert_called_once_with("test", "default")
+        mock_stats.get_dynamic_timeout.assert_called_once_with("test", "default")
+
+    @patch("base_provider._stats_available", True)
+    @patch("base_provider.ModelStats")
+    def test_get_timeout_adaptive_without_sufficient_data(self, mock_stats_cls, monkeypatch):
+        """Test adaptive timeout falls back to default when insufficient data."""
+        monkeypatch.setenv("SYNOD_V2_ADAPTIVE_TIMEOUT", "1")
+        mock_stats = MagicMock()
+        mock_stats.has_sufficient_data.return_value = False
+        mock_stats_cls.return_value = mock_stats
+
+        provider = MockProvider()
+        args = argparse.Namespace(timeout=None)
+        timeout = provider.get_timeout_ms(args, "default")
+        assert timeout == 300_000  # Default, not adaptive
+        mock_stats.get_dynamic_timeout.assert_not_called()
+
+    @patch("base_provider._stats_available", True)
+    @patch("base_provider.ModelStats")
+    def test_get_timeout_adaptive_verbose_output(self, mock_stats_cls, monkeypatch):
+        """Test adaptive timeout prints info in verbose mode."""
+        monkeypatch.setenv("SYNOD_V2_ADAPTIVE_TIMEOUT", "1")
+        mock_stats = MagicMock()
+        mock_stats.has_sufficient_data.return_value = True
+        mock_stats.get_dynamic_timeout.return_value = 50_000
+        mock_stats_cls.return_value = mock_stats
+
+        provider = MockProvider()
+        args = argparse.Namespace(timeout=None, verbose=True)
+        with patch("sys.stderr", new=StringIO()) as mock_stderr:
+            timeout = provider.get_timeout_ms(args, "default")
+            assert timeout == 50_000
+            assert "[Adaptive]" in mock_stderr.getvalue()
+            assert "50000ms" in mock_stderr.getvalue()
+
 
 class TestBuildParser:
     """Tests for build_parser() method."""
