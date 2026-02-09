@@ -116,6 +116,89 @@ def calculate_trust_score(c: float, r: float, i: float, s: float) -> dict[str, A
     }
 
 
+def calculate_confidence_interval(scores: list[float], confidence_level: float = 0.95) -> dict:
+    """Calculate confidence interval for a set of scores.
+
+    Uses t-distribution for small samples (n < 30).
+
+    Args:
+        scores: List of numeric scores
+        confidence_level: Confidence level (default 0.95 for 95% CI)
+
+    Returns:
+        Dict with mean, lower, upper, margin, n
+    """
+    import math
+
+    n = len(scores)
+    if n == 0:
+        return {"mean": 0, "lower": 0, "upper": 0, "margin": 0, "n": 0}
+    if n == 1:
+        return {"mean": scores[0], "lower": scores[0], "upper": scores[0], "margin": 0, "n": 1}
+
+    mean = sum(scores) / n
+    variance = sum((x - mean) ** 2 for x in scores) / (n - 1)
+    std_dev = math.sqrt(variance)
+
+    # t-distribution critical values for common confidence levels
+    # Approximation for small samples
+    t_values = {
+        2: {0.95: 4.303, 0.90: 2.920},
+        3: {0.95: 3.182, 0.90: 2.353},
+        4: {0.95: 2.776, 0.90: 2.132},
+        5: {0.95: 2.571, 0.90: 2.015},
+    }
+
+    if n - 1 in t_values and confidence_level in t_values[n - 1]:
+        t_crit = t_values[n - 1][confidence_level]
+    else:
+        t_crit = 1.96  # z-approximation for larger samples
+
+    margin = t_crit * (std_dev / math.sqrt(n))
+
+    return {
+        "mean": round(mean, 3),
+        "lower": round(max(0, mean - margin), 3),
+        "upper": round(min(2.0, mean + margin), 3),
+        "margin": round(margin, 3),
+        "n": n,
+    }
+
+
+def weighted_consensus(model_scores: list[dict]) -> dict:
+    """Calculate weighted consensus from multiple model trust scores.
+
+    Implements: FINAL = Σ(T_i × C_i) / Σ(T_i)
+    where T = trust score, C = confidence score.
+
+    Args:
+        model_scores: List of dicts with keys: model, trust_score, confidence
+
+    Returns:
+        Dict with final_confidence, weights, dominant_model
+    """
+    if not model_scores:
+        return {"final_confidence": 0, "weights": {}, "dominant_model": None}
+
+    total_trust = sum(s["trust_score"] for s in model_scores)
+    if total_trust == 0:
+        # Equal weighting fallback
+        n = len(model_scores)
+        final = sum(s["confidence"] for s in model_scores) / n
+        weights = {s["model"]: round(1.0 / n, 3) for s in model_scores}
+    else:
+        final = sum(s["trust_score"] * s["confidence"] for s in model_scores) / total_trust
+        weights = {s["model"]: round(s["trust_score"] / total_trust, 3) for s in model_scores}
+
+    dominant = max(model_scores, key=lambda s: s["trust_score"])
+
+    return {
+        "final_confidence": round(final, 1),
+        "weights": weights,
+        "dominant_model": dominant["model"],
+    }
+
+
 def apply_defaults(text: str) -> dict[str, Any]:
     """Apply default values for malformed responses."""
     return {
@@ -167,8 +250,29 @@ def main():
         metavar=("C", "R", "I", "S"),
         help="Calculate Trust Score from C R I S values",
     )
+    parser.add_argument(
+        "--consensus",
+        nargs="+",
+        type=str,
+        help="Calculate weighted consensus: model1:trust:confidence model2:trust:confidence ...",
+    )
 
     args = parser.parse_args()
+
+    # Consensus calculation mode
+    if args.consensus:
+        scores = []
+        for entry in args.consensus:
+            parts = entry.split(":")
+            if len(parts) == 3:
+                scores.append({
+                    "model": parts[0],
+                    "trust_score": float(parts[1]),
+                    "confidence": float(parts[2]),
+                })
+        result = weighted_consensus(scores)
+        print(json.dumps(result, indent=2))
+        sys.exit(0)
 
     # Trust score calculation mode
     if args.trust:
