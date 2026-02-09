@@ -10,6 +10,9 @@ from tools.synod_config import (
     get_rounds,
     get_complexity_rounds,
     list_modes,
+    get_timeouts,
+    get_all_keywords,
+    get_threshold,
     _CONFIG_CACHE,
 )
 
@@ -190,3 +193,132 @@ def test_rounds_have_base_and_dynamic_range():
         assert isinstance(rounds["base"], int)
         assert isinstance(rounds["dynamic_range"], list)
         assert len(rounds["dynamic_range"]) == 2
+
+
+# --- v2.1: Tests for new config functions ---
+
+
+def test_get_timeouts_returns_dict():
+    """Test that get_timeouts returns model and outer timeout values."""
+    timeouts = get_timeouts()
+    assert isinstance(timeouts, dict)
+    assert "model" in timeouts
+    assert "outer" in timeouts
+    assert timeouts["model"] == 110
+    assert timeouts["outer"] == 120
+
+
+def test_get_all_keywords_returns_four_modes():
+    """Test that get_all_keywords returns patterns for 4 classifiable modes."""
+    keywords = get_all_keywords()
+    assert isinstance(keywords, dict)
+    expected = {"review", "design", "debug", "idea"}
+    assert set(keywords.keys()) == expected
+
+
+def test_get_all_keywords_non_empty_patterns():
+    """Test that each mode has at least one keyword pattern."""
+    keywords = get_all_keywords()
+    for mode, patterns in keywords.items():
+        assert isinstance(patterns, list), f"Mode {mode} keywords should be a list"
+        assert len(patterns) > 0, f"Mode {mode} should have keyword patterns"
+
+
+def test_get_threshold_known_values():
+    """Test get_threshold returns correct values from config."""
+    assert get_threshold("low_confidence") == 50
+    assert get_threshold("trust_exclude") == 0.5
+    assert get_threshold("trust_good") == 1.0
+    assert get_threshold("trust_high") == 1.5
+    assert get_threshold("trust_cap") == 2.0
+    assert get_threshold("early_exit_confidence") == 90
+
+
+def test_get_threshold_unknown_returns_default():
+    """Test get_threshold returns default for unknown threshold name."""
+    assert get_threshold("nonexistent") == 0
+    assert get_threshold("nonexistent", 42) == 42
+
+
+def test_config_cli_main(capsys):
+    """Test the CLI main() function for config access."""
+    import sys
+    from tools.synod_config import main
+
+    # Test timeouts.model
+    sys.argv = ["synod_config.py", "timeouts", "model"]
+    main()
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "110"
+
+
+def test_config_cli_nested_path(capsys):
+    """Test CLI with nested path for mode model config."""
+    import sys
+    from tools.synod_config import main
+
+    sys.argv = ["synod_config.py", "modes", "review", "models", "gemini", "model"]
+    main()
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "flash"
+
+
+def test_config_cli_json_output(capsys):
+    """Test CLI outputs JSON for dict/list results."""
+    import sys
+    import json
+    from tools.synod_config import main
+
+    sys.argv = ["synod_config.py", "timeouts"]
+    main()
+    captured = capsys.readouterr()
+    result = json.loads(captured.out.strip())
+    assert result["model"] == 110
+    assert result["outer"] == 120
+
+
+def test_config_cli_missing_path_exits():
+    """Test CLI exits with code 1 for nonexistent path."""
+    import sys
+    from tools.synod_config import main
+
+    sys.argv = ["synod_config.py", "nonexistent", "path"]
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+
+
+# --- v2.1: Template tests ---
+
+
+def test_get_template_review():
+    """Test get_template loads review template with Korean text."""
+    from tools.synod_config import get_template
+
+    template = get_template("review")
+    assert isinstance(template, str)
+    assert len(template) > 0
+    assert "코드 리뷰 결과" in template
+    assert "발견된 문제" in template
+    assert "권장 사항" in template
+    assert "신뢰도" in template
+
+
+def test_get_template_all_modes():
+    """Test get_template returns non-empty strings for all 5 modes."""
+    from tools.synod_config import get_template
+
+    modes = ["review", "design", "debug", "idea", "general"]
+    for mode in modes:
+        template = get_template(mode)
+        assert isinstance(template, str), f"Mode {mode} should return a string"
+        assert len(template) > 0, f"Mode {mode} template should not be empty"
+        assert "신뢰도" in template, f"Mode {mode} should contain confidence section"
+
+
+def test_get_template_unknown_returns_empty():
+    """Test get_template returns empty string for unknown mode."""
+    from tools.synod_config import get_template
+
+    template = get_template("nonexistent_mode")
+    assert template == ""

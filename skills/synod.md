@@ -14,7 +14,7 @@ You are the **Synod Orchestrator** - a judicial coordinator managing a multi-mod
 - `$ARGUMENTS` = Full argument string
 
 **Mode Detection (v2.0 - Auto Classification):**
-- If `$1` matches `resume` → resume protocol (see `synod-resume.md`)
+- If `$1` matches `resume` → resume protocol (see `modules/synod-resume.md`)
 - If `$1` matches `review|design|debug|idea` → use as mode (backward compatible, deprecated)
 - Otherwise → **auto-classify** mode from prompt content using `synod-classifier`
 
@@ -35,13 +35,13 @@ Synod execution is split into modular phases. Each phase is documented in a sepa
 
 | Phase | Module File | Description |
 |-------|-------------|-------------|
-| **Phase 0** | `synod-phase0-setup.md` | Classification, model selection, session initialization |
-| **Phase 1** | `synod-phase1-solver.md` | Parallel solver execution (Claude/Gemini/OpenAI) |
-| **Phase 2** | `synod-phase2-critic.md` | Cross-validation, trust score calculation |
-| **Phase 3** | `synod-phase3-defense.md` | Court-style debate (defense/prosecution/judge) |
-| **Phase 4** | `synod-phase4-synthesis.md` | Final output generation with confidence weighting |
-| **Error Handling** | `synod-error-handling.md` | Timeout fallbacks, format enforcement, API errors |
-| **Resume** | `synod-resume.md` | Session resumption and cleanup |
+| **Phase 0** | `modules/synod-phase0-setup.md` | Classification, model selection, session initialization |
+| **Phase 1** | `modules/synod-phase1-solver.md` | Parallel solver execution (Claude/Gemini/OpenAI) |
+| **Phase 2** | `modules/synod-phase2-critic.md` | Cross-validation, trust score calculation |
+| **Phase 3** | `modules/synod-phase3-defense.md` | Court-style debate (defense/prosecution/judge) |
+| **Phase 4** | `modules/synod-phase4-synthesis.md` | Final output generation with confidence weighting |
+| **Error Handling** | `modules/synod-error-handling.md` | Timeout fallbacks, format enforcement, API errors |
+| **Resume** | `modules/synod-resume.md` | Session resumption and cleanup |
 
 ---
 
@@ -51,7 +51,7 @@ Synod execution is split into modular phases. Each phase is documented in a sepa
 
 ```
 IF $1 == "resume" OR $ARGUMENTS contains "--continue":
-    → Jump to RESUME PROTOCOL (see synod-resume.md)
+    → Jump to RESUME PROTOCOL (see modules/synod-resume.md)
 ELSE IF $1 in [review, design, debug, idea]:
     # Backward Compatibility: legacy mode keywords still work
     echo "[Deprecated] 모드 키워드 사용은 deprecated됩니다. /synod <prompt>를 사용하세요." >&2
@@ -119,7 +119,7 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
 
 **Note:** Resume mode (`/synod resume`) bypasses this check as PROBLEM is not required.
 
-**Next Steps:** After validation, proceed to Phase 0 setup (see `synod-phase0-setup.md`).
+**Next Steps:** After validation, proceed to Phase 0 setup (see `modules/synod-phase0-setup.md`).
 
 ---
 
@@ -129,34 +129,34 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
 1. PARSE arguments (Step 0.1) → determine MODE and PROBLEM
 2. VALIDATE input (Step 0.1b)
 3. ↓
-4. PHASE 0: Setup (synod-phase0-setup.md)
+4. PHASE 0: Setup (modules/synod-phase0-setup.md)
    - Classify problem type and complexity
    - Select model configurations
    - Create session directory and state
 5. ↓
-6. PHASE 1: Solver Round (synod-phase1-solver.md)
+6. PHASE 1: Solver Round (modules/synod-phase1-solver.md)
    - Execute Claude + Gemini + OpenAI in parallel
    - Validate responses, enforce format if needed
    - Check early exit condition
 7. ↓
-8. PHASE 2: Critic Round (synod-phase2-critic.md)
+8. PHASE 2: Critic Round (modules/synod-phase2-critic.md)
    - Aggregate solutions
    - Calculate Trust Scores (CRIS rubric)
    - Cross-validate claims
 9. ↓
-10. PHASE 3: Defense Round (synod-phase3-defense.md)
+10. PHASE 3: Defense Round (modules/synod-phase3-defense.md)
     - Court-style debate (defense/prosecution/judge)
     - Resolve contentions
 11. ↓
-12. PHASE 4: Synthesis (synod-phase4-synthesis.md)
+12. PHASE 4: Synthesis (modules/synod-phase4-synthesis.md)
     - Compile final evidence
     - Generate mode-specific output
     - Save final state
 ```
 
-**On any error:** Activate fallback chain (see `synod-error-handling.md`), preserve state, continue if possible.
+**On any error:** Activate fallback chain (see `modules/synod-error-handling.md`), preserve state, continue if possible.
 
-**On user interrupt:** State is preserved for resume (see `synod-resume.md`).
+**On user interrupt:** State is preserved for resume (see `modules/synod-resume.md`).
 
 ---
 
@@ -248,7 +248,7 @@ mistral-cli --model codestral < prompt.txt  # 코드 특화
 | `/synod API 설계해줘` | → auto-classify → design 모드 |
 | `/synod 에러 수정해줘` | → auto-classify → debug 모드 |
 | `/synod 아이디어 좀 줘` | → auto-classify → idea 모드 |
-| `/synod resume` | 중단된 세션 계속 (see `synod-resume.md`) |
+| `/synod resume` | 중단된 세션 계속 (see `modules/synod-resume.md`) |
 | `/synod-setup` | 모델 가용성 테스트 및 최적 설정 생성 |
 | `/cancel-synod` | 현재 세션 중단 (상태 보존) |
 

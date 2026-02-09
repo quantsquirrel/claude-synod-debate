@@ -6,22 +6,27 @@ Determines mode (review, design, debug, idea, general) from user prompts.
 
 import argparse
 import json
+import os
 import re
 import sys
 
 
-def classify_prompt(prompt):
-    """
-    Classify prompt into Synod execution mode using regex keyword patterns.
+def _load_keyword_patterns():
+    """Load keyword patterns from YAML config with hardcoded fallback."""
+    try:
+        import os
+        tools_dir = os.path.dirname(os.path.abspath(__file__))
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        from synod_config import get_all_keywords
+        yaml_keywords = get_all_keywords()
+        if yaml_keywords:
+            return yaml_keywords
+    except (ImportError, FileNotFoundError, Exception):
+        pass
 
-    Args:
-        prompt: User's prompt text
-
-    Returns:
-        tuple: (mode, confidence)
-    """
-    # Mode patterns (Korean + English)
-    patterns = {
+    # Hardcoded fallback patterns
+    return {
         'review': [
             r'리뷰', r'review', r'검토', r'코드\s*확인', r'PR\s*리뷰',
             r'버그\s*찾', r'문제\s*찾', r'개선\s*점', r'피드백'
@@ -39,6 +44,20 @@ def classify_prompt(prompt):
             r'제안', r'suggest', r'어떻게\s*하면', r'방법', r'대안'
         ]
     }
+
+
+def classify_prompt(prompt):
+    """
+    Classify prompt into Synod execution mode using regex keyword patterns.
+
+    Args:
+        prompt: User's prompt text
+
+    Returns:
+        tuple: (mode, confidence)
+    """
+    # Load patterns from YAML config (with hardcoded fallback)
+    patterns = _load_keyword_patterns()
 
     # Score each mode by counting matched patterns (absolute count)
     scores = {}
@@ -114,13 +133,29 @@ def determine_complexity(prompt):
     # Calculate complexity score
     score = word_count / 100 + code_blocks * 0.5 + file_mentions * 0.3
 
-    # Determine complexity and rounds
-    if score < 0.5:
-        return "simple", 2
-    elif score < 2.0:
-        return "medium", 3
+    # Load complexity thresholds from config (with fallback defaults)
+    try:
+        tools_dir = os.path.dirname(os.path.abspath(__file__))
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        from synod_config import load_config
+        cfg = load_config()
+        complexity_cfg = cfg.get("complexity", {})
+        simple_max = complexity_cfg.get("simple", {}).get("max_score", 0.5)
+        medium_max = complexity_cfg.get("medium", {}).get("max_score", 2.0)
+        simple_rounds = complexity_cfg.get("simple", {}).get("rounds", 2)
+        medium_rounds = complexity_cfg.get("medium", {}).get("rounds", 3)
+        complex_rounds = complexity_cfg.get("complex", {}).get("rounds", 4)
+    except (ImportError, FileNotFoundError, Exception):
+        simple_max, medium_max = 0.5, 2.0
+        simple_rounds, medium_rounds, complex_rounds = 2, 3, 4
+
+    if score < simple_max:
+        return "simple", simple_rounds
+    elif score < medium_max:
+        return "medium", medium_rounds
     else:
-        return "complex", 4
+        return "complex", complex_rounds
 
 
 def main():

@@ -117,6 +117,17 @@ Generate your solution with the same XML format requirements.
 
 ## Step 1.2: Execute External Models in Parallel
 
+**v2.1:** Load timeouts from config and emit progress events:
+
+```bash
+# Load timeouts from config (v2.1)
+MODEL_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts model 2>/dev/null || echo "110")
+OUTER_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts outer 2>/dev/null || echo "120")
+
+# Emit phase start
+synod_progress '{"event":"phase_start","phase":1,"name":"Solver Round"}'
+```
+
 Run these commands in parallel using background execution:
 
 ```bash
@@ -125,7 +136,8 @@ TEMP_DIR="/tmp/synod-${SESSION_ID}"
 
 # Gemini execution with completion marker
 (
-  $GEMINI_CLI --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout 110 \
+  synod_progress '{"event":"model_start","model":"gemini"}'
+  $GEMINI_CLI --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout ${MODEL_TIMEOUT:-110} \
     < "${TEMP_DIR}/gemini-prompt.txt" \
     > "${TEMP_DIR}/gemini-response.txt" 2>&1
   echo $? > "${TEMP_DIR}/gemini-exit-code"
@@ -134,7 +146,8 @@ GEMINI_PID=$!
 
 # OpenAI execution with completion marker
 (
-  $OPENAI_CLI --model {OPENAI_MODEL} {--reasoning REASONING if o3} --timeout 110 \
+  synod_progress '{"event":"model_start","model":"openai"}'
+  $OPENAI_CLI --model {OPENAI_MODEL} {--reasoning REASONING if o3} --timeout ${MODEL_TIMEOUT:-110} \
     < "${TEMP_DIR}/openai-prompt.txt" \
     > "${TEMP_DIR}/openai-response.txt" 2>&1
   echo $? > "${TEMP_DIR}/openai-exit-code"
@@ -143,7 +156,7 @@ OPENAI_PID=$!
 
 # Wait with outer timeout (slightly longer than inner)
 # This prevents Claude's bash from timing out before subprocesses complete
-WAIT_TIMEOUT=120
+WAIT_TIMEOUT=${OUTER_TIMEOUT:-120}
 WAIT_START=$(date +%s)
 
 while true; do
@@ -175,6 +188,12 @@ while true; do
 done
 
 # Validate completions
+# Emit model completion events
+[[ -f "${TEMP_DIR}/gemini-exit-code" ]] && \
+  synod_progress "{\"event\":\"model_complete\",\"model\":\"gemini\",\"duration_ms\":$(($(date +%s)-WAIT_START))000}"
+[[ -f "${TEMP_DIR}/openai-exit-code" ]] && \
+  synod_progress "{\"event\":\"model_complete\",\"model\":\"openai\",\"duration_ms\":$(($(date +%s)-WAIT_START))000}"
+
 GEMINI_STATUS=$(cat "${TEMP_DIR}/gemini-exit-code" 2>/dev/null || echo "missing")
 OPENAI_STATUS=$(cat "${TEMP_DIR}/openai-exit-code" 2>/dev/null || echo "missing")
 ```
@@ -287,5 +306,10 @@ Update status.json:
 If ALL models have `can_exit: true` AND confidence scores are all >= 90:
 - Skip to PHASE 4: Synthesis (see `synod-phase4-synthesis.md`)
 - Note: "조기 합의에 도달했습니다 - 토론 라운드를 건너뜁니다"
+
+```bash
+# Emit phase end
+synod_progress '{"event":"phase_end","phase":1}'
+```
 
 **Next Phase:** Proceed to Phase 2 (see `synod-phase2-critic.md`)

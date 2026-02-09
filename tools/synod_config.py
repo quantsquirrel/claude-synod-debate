@@ -19,6 +19,13 @@ def _find_config_path() -> str:
     return os.path.join(project_root, "config", "synod-modes.yaml")
 
 
+def _find_templates_path() -> str:
+    """Find synod-templates.yaml relative to this file."""
+    tools_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(tools_dir)
+    return os.path.join(project_root, "config", "synod-templates.yaml")
+
+
 def load_config(force_reload: bool = False) -> dict:
     """Load and cache the synod modes configuration."""
     global _CONFIG_CACHE
@@ -79,3 +86,80 @@ def list_modes() -> list[str]:
     """List all available mode names."""
     config = load_config()
     return list(config.get("modes", {}).keys())
+
+
+def get_timeouts() -> dict:
+    """Get timeout configuration."""
+    config = load_config()
+    return config.get("timeouts", {"model": 110, "outer": 120})
+
+
+def get_all_keywords() -> dict[str, list[str]]:
+    """Get all classifier keyword patterns."""
+    config = load_config()
+    return config.get("keywords", {})
+
+
+def get_threshold(name: str, default: float = 0) -> float:
+    """Get a named threshold value."""
+    config = load_config()
+    return config.get("thresholds", {}).get(name, default)
+
+
+def get_template(mode: str) -> str:
+    """Get output template for a mode from synod-templates.yaml.
+
+    Args:
+        mode: Mode name (review, design, debug, idea, general)
+
+    Returns:
+        Template string, or empty string if not found
+    """
+    templates_path = _find_templates_path()
+    if not os.path.exists(templates_path):
+        return ""
+
+    try:
+        with open(templates_path, "r") as f:
+            templates_config = yaml.safe_load(f)
+        return templates_config.get("templates", {}).get(mode, "")
+    except Exception:
+        return ""
+
+
+def main():
+    """CLI interface for shell script access to config values."""
+    import argparse
+    import json
+    import sys
+
+    parser = argparse.ArgumentParser(description="Query synod configuration")
+    parser.add_argument("path", nargs="+",
+                        help="Config path segments (e.g. 'timeouts model')")
+    args = parser.parse_args()
+
+    try:
+        config = load_config()
+    except FileNotFoundError:
+        print("Error: config not found", file=sys.stderr)
+        sys.exit(1)
+
+    result = config
+    for key in args.path:
+        if isinstance(result, dict):
+            result = result.get(key)
+        else:
+            result = None
+            break
+
+    if result is None:
+        sys.exit(1)
+
+    if isinstance(result, (dict, list)):
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(result)
+
+
+if __name__ == "__main__":
+    main()

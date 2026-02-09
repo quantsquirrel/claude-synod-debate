@@ -30,7 +30,15 @@
 
 ## Step 0.3: Determine Complexity & Round Count (v2.0)
 
-**v2.0:** When dynamic rounds is enabled (`SYNOD_V2_DYNAMIC_ROUNDS=1`), complexity and round count are determined by `synod-classifier.py`:
+**v2.0:** When dynamic rounds is enabled (`SYNOD_V2_DYNAMIC_ROUNDS=1`), complexity and round count are determined by `synod-classifier.py`. **v2.1:** Thresholds are loaded from `config/synod-modes.yaml` via `synod_config.py`:
+
+```bash
+# Load complexity thresholds from config (v2.1)
+SIMPLE_MAX=$(python3 "${TOOLS_DIR}/synod_config.py" complexity simple max_score 2>/dev/null || echo "0.5")
+MEDIUM_MAX=$(python3 "${TOOLS_DIR}/synod_config.py" complexity medium max_score 2>/dev/null || echo "2.0")
+```
+
+**Fallback Reference** (used when config unavailable):
 
 | Complexity | Indicators | Rounds |
 |------------|------------|--------|
@@ -86,7 +94,29 @@ else
 fi
 ```
 
-Based on MODE, select configurations (overridden by setup results when available):
+**v2.1:** Load model configuration from `config/synod-modes.yaml` via `synod_config.py`:
+
+```bash
+# Load model config from YAML (v2.1)
+GEMINI_MODEL=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models gemini model 2>/dev/null)
+GEMINI_THINKING=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models gemini thinking 2>/dev/null)
+OPENAI_MODEL=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models openai model 2>/dev/null)
+OPENAI_REASONING=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models openai reasoning 2>/dev/null)
+BASE_ROUNDS=$(python3 -c "
+import sys; sys.path.insert(0,'${TOOLS_DIR}')
+from synod_config import get_rounds
+print(get_rounds('$MODE')['base'])
+" 2>/dev/null)
+
+# Fallback to defaults if config unavailable
+GEMINI_MODEL="${GEMINI_MODEL:-flash}"
+GEMINI_THINKING="${GEMINI_THINKING:-medium}"
+OPENAI_MODEL="${OPENAI_MODEL:-gpt4o}"
+OPENAI_REASONING="${OPENAI_REASONING:-}"
+BASE_ROUNDS="${BASE_ROUNDS:-3}"
+```
+
+Select configurations (overridden by setup results when available, **fallback reference** when config unavailable):
 
 | Mode | Gemini Model | Gemini Thinking | OpenAI Model | OpenAI Reasoning | Base Rounds | Dynamic |
 |------|--------------|-----------------|--------------|------------------|-------------|---------|
@@ -216,6 +246,24 @@ SESSION_DIR=".omc/synod/${SESSION_ID}"
 mkdir -p "${SESSION_DIR}/round-1-solver"
 mkdir -p "${SESSION_DIR}/round-2-critic"
 mkdir -p "${SESSION_DIR}/round-3-defense"
+
+# Initialize progress display (v2.1)
+PROGRESS_FIFO="/tmp/synod-${SESSION_ID}-progress"
+mkfifo "$PROGRESS_FIFO" 2>/dev/null
+python3 "${TOOLS_DIR}/synod_progress.py" < "$PROGRESS_FIFO" &
+PROGRESS_PID=$!
+
+# Progress helper function
+synod_progress() { echo "$1" > "$PROGRESS_FIFO" 2>/dev/null; }
+
+# Emit setup phase start
+synod_progress '{"event":"phase_start","phase":0,"name":"Setup"}'
+```
+
+**Progress Cleanup:** On session end or error:
+```bash
+synod_progress '{"event":"phase_end","phase":4}'
+kill $PROGRESS_PID 2>/dev/null; rm -f "$PROGRESS_FIFO"
 ```
 
 ## Step 0.6: Initialize Session State

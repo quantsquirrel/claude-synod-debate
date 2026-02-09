@@ -2,7 +2,9 @@
 Tests for synod-parser.py - SID signal extraction and parsing.
 """
 
+import json
 import os
+import pytest
 import sys
 
 # Add tools directory to path
@@ -295,3 +297,61 @@ class TestApplyDefaults:
         result = synod_parser.apply_defaults(sample_invalid_response)
         assert "semantic_focus" in result
         assert isinstance(result["semantic_focus"], list)
+
+
+class TestParserCLI:
+    """Tests for parser main() CLI (lines 243-300)."""
+
+    def test_trust_calculation_cli(self, capsys):
+        """Test --trust flag calculates trust score."""
+        sys.argv = ["synod-parser", "--trust", "0.9", "0.8", "0.9", "0.2"]
+        synod_parser.main()
+        import json
+        output = json.loads(capsys.readouterr().out)
+        assert "trust_score" in output
+        assert output["trust_score"] > 0
+
+    def test_validate_cli_valid(self, capsys, sample_valid_response):
+        """Test --validate flag with valid response."""
+        sys.argv = ["synod-parser", "--validate", sample_valid_response]
+        with pytest.raises(SystemExit) as exc_info:
+            synod_parser.main()
+        assert exc_info.value.code == 0
+
+    def test_validate_cli_invalid(self, capsys):
+        """Test --validate flag with invalid response exits 1."""
+        sys.argv = ["synod-parser", "--validate", "just plain text no xml"]
+        with pytest.raises(SystemExit) as exc_info:
+            synod_parser.main()
+        assert exc_info.value.code == 1
+
+    def test_full_parse_cli(self, capsys, sample_valid_response):
+        """Test full parse via CLI argument."""
+        sys.argv = ["synod-parser", sample_valid_response]
+        synod_parser.main()
+        import json
+        output = json.loads(capsys.readouterr().out)
+        assert "confidence" in output
+        assert "semantic_focus" in output
+
+    def test_consensus_cli(self, capsys):
+        """Test --consensus flag."""
+        sys.argv = [
+            "synod-parser", "--consensus",
+            "claude:1.5:85", "gemini:1.2:78", "openai:0.8:72"
+        ]
+        with pytest.raises(SystemExit) as exc_info:
+            synod_parser.main()
+        assert exc_info.value.code == 0
+
+    def test_no_input_exits(self, monkeypatch):
+        """Test exits with error when no input provided (tty stdin)."""
+        sys.argv = ["synod-parser"]
+        # Simulate tty stdin by using a mock that returns True for isatty()
+        import io
+        mock_stdin = io.StringIO("")
+        mock_stdin.isatty = lambda: True
+        monkeypatch.setattr("sys.stdin", mock_stdin)
+        with pytest.raises(SystemExit) as exc_info:
+            synod_parser.main()
+        assert exc_info.value.code == 1

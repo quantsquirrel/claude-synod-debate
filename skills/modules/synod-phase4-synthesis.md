@@ -16,6 +16,12 @@
 
 ---
 
+```bash
+# Emit phase start (v2.1)
+synod_progress '{"event":"phase_start","phase":4,"name":"Synthesis"}'
+synod_progress '{"event":"model_start","model":"claude"}'
+```
+
 ## Step 4.1: Compile Final Evidence
 
 Gather from all rounds:
@@ -35,7 +41,21 @@ Where T = Trust Score, C = Confidence Score
 
 ## Step 4.3: Generate Mode-Specific Output
 
-### Mode: review
+```bash
+# Load output template from config (v2.1)
+OUTPUT_TEMPLATE=$(python3 -c "
+import sys; sys.path.insert(0,'${TOOLS_DIR}')
+from synod_config import get_template
+print(get_template('$MODE'))
+" 2>/dev/null)
+```
+
+### Fallback Reference (if config unavailable)
+
+<details>
+<summary>Mode-specific templates</summary>
+
+#### Mode: review
 ```markdown
 ## 코드 리뷰 결과
 
@@ -51,7 +71,7 @@ Where T = Trust Score, C = Confidence Score
 {brief note on agreement/disagreement between models}
 ```
 
-### Mode: design
+#### Mode: design
 ```markdown
 ## 아키텍처 결정
 
@@ -72,7 +92,7 @@ Where T = Trust Score, C = Confidence Score
 {note on design certainty}
 ```
 
-### Mode: debug
+#### Mode: debug
 ```markdown
 ## 디버그 분석
 
@@ -92,7 +112,7 @@ Where T = Trust Score, C = Confidence Score
 ### 신뢰도: {FINAL_CONFIDENCE}%
 ```
 
-### Mode: idea
+#### Mode: idea
 ```markdown
 ## 아이디어 평가
 
@@ -112,7 +132,7 @@ Where T = Trust Score, C = Confidence Score
 ### 신뢰도: {FINAL_CONFIDENCE}%
 ```
 
-### Mode: general
+#### Mode: general
 ```markdown
 ## 답변
 
@@ -128,6 +148,8 @@ Where T = Trust Score, C = Confidence Score
 
 ### 신뢰도: {FINAL_CONFIDENCE}%
 ```
+
+</details>
 
 ## Step 4.4: Include Decision Rationale
 
@@ -167,6 +189,15 @@ Update status.json:
   "final_confidence": {FINAL_CONFIDENCE},
   "completed_at": "{ISO_TIMESTAMP}"
 }
+```
+
+```bash
+# Emit synthesis complete (v2.1)
+synod_progress '{"event":"model_complete","model":"claude"}'
+synod_progress '{"event":"phase_end","phase":4}'
+
+# Cleanup progress display
+kill $PROGRESS_PID 2>/dev/null; rm -f "$PROGRESS_FIFO"
 ```
 
 **Session Complete:** Present final synthesis to user.

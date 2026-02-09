@@ -21,6 +21,11 @@
 
 ---
 
+```bash
+# Emit phase start (v2.1)
+synod_progress '{"event":"phase_start","phase":2,"name":"Critic Round"}'
+```
+
 ## Step 2.1: Claude Aggregation
 
 As the orchestrator, analyze all three Solver responses:
@@ -51,8 +56,8 @@ CLAUDE_CONF=$(jq -r '.confidence.score // 50' "${SESSION_DIR}/round-1-solver/cla
 GEMINI_CONF=$(jq -r '.confidence.score // 50' "${SESSION_DIR}/round-1-solver/gemini-parsed.json")
 OPENAI_CONF=$(jq -r '.confidence.score // 50' "${SESSION_DIR}/round-1-solver/openai-parsed.json")
 
-# Low confidence threshold
-LOW_CONF_THRESHOLD=50
+# Load low confidence threshold from config (v2.1)
+LOW_CONF_THRESHOLD=$(python3 "${TOOLS_DIR}/synod_config.py" thresholds low_confidence 2>/dev/null || echo "50")
 
 # Generate soft defer hints
 SOFT_DEFER_HINT=""
@@ -124,7 +129,8 @@ Validate claims from the Solver round. Focus on:
 Execute:
 ```bash
 # Gemini Critic execution (medium thinking for analytical evaluation)
-$GEMINI_CLI --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout 120 < "${TEMP_DIR}/gemini-critic-prompt.txt" > "${TEMP_DIR}/gemini-critique.txt" 2>&1 &
+synod_progress '{"event":"model_start","model":"gemini"}'
+$GEMINI_CLI --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout ${MODEL_TIMEOUT:-110} < "${TEMP_DIR}/gemini-critic-prompt.txt" > "${TEMP_DIR}/gemini-critique.txt" 2>&1 &
 ```
 
 ## Step 2.3: OpenAI Critic Execution
@@ -215,7 +221,9 @@ For each model's Solver response, calculate Trust Score using this rubric:
 | 0.7-0.8 | Strong bias; ignores contradicting evidence |
 | 0.9-1.0 | Completely one-sided; refuses to consider alternatives |
 
-**Trust Calculation:** `T = min((C x R x I) / S, 2.0)`
+**v2.1:** Trust cap loaded from config: `python3 "${TOOLS_DIR}/synod_config.py" thresholds trust_cap`
+
+**Trust Calculation:** `T = min((C x R x I) / S, TRUST_CAP)`
 
 The formula is capped at 2.0 to prevent unbounded scores when Self-Orientation (S) is very low:
 - S = 0.1 (most neutral) with perfect C/R/I → T = min(10.0, 2.0) = 2.0
@@ -242,5 +250,12 @@ Save to `${SESSION_DIR}/round-2-critic/`:
 - `contentions.json` - List of disputed points
 
 Update status.json to round 2 complete.
+
+```bash
+# Emit model completions and phase end (v2.1)
+synod_progress '{"event":"model_complete","model":"gemini"}'
+synod_progress '{"event":"model_complete","model":"openai"}'
+synod_progress '{"event":"phase_end","phase":2}'
+```
 
 **Next Phase:** Proceed to Phase 3 (see `synod-phase3-defense.md`)

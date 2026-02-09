@@ -104,7 +104,7 @@ addopts = "-v --cov=tools --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["tools", "benchmark"]
-omit = ["*/tests/*", "*/__pycache__/*"]
+omit = ["*/tests/*", "*/__pycache__/*", "tools/test_security.py", "tools/synod-setup.py"]
 
 [tool.coverage.report]
 exclude_lines = [

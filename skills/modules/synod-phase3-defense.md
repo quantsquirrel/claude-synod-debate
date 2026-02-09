@@ -21,6 +21,11 @@
 
 ---
 
+```bash
+# Emit phase start (v2.1)
+synod_progress '{"event":"phase_start","phase":3,"name":"Defense Round"}'
+```
+
 ## Step 3.1: Assign Court Roles
 
 - **Judge (Claude)**: Neutral arbiter, makes final rulings
@@ -32,6 +37,10 @@
 Select the solution with highest Trust Score as the "defendant."
 
 ## Step 3.3: Gemini Defense Execution
+
+```bash
+synod_progress '{"event":"model_start","model":"gemini"}'
+```
 
 Write to `${TEMP_DIR}/gemini-defense-prompt.txt`:
 
@@ -88,6 +97,10 @@ Only concede points that are GENUINELY indefensible.
 ```
 
 ## Step 3.4: OpenAI Prosecution Execution
+
+```bash
+synod_progress '{"event":"model_start","model":"openai"}'
+```
 
 Write to `${TEMP_DIR}/openai-prosecution-prompt.txt`:
 
@@ -160,5 +173,12 @@ Save to `${SESSION_DIR}/round-3-defense/`:
 - `preliminary-ruling.md` - Initial judgment
 
 Update status.json to round 3 complete.
+
+```bash
+# Emit completions and phase end (v2.1)
+synod_progress '{"event":"model_complete","model":"gemini"}'
+synod_progress '{"event":"model_complete","model":"openai"}'
+synod_progress '{"event":"phase_end","phase":3}'
+```
 
 **Next Phase:** Proceed to Phase 4 (see `synod-phase4-synthesis.md`)

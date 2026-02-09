@@ -103,3 +103,58 @@ complexity:
 timeouts:
   model: 110
   outer: 120
+
+# Classifier keyword patterns (used by synod-classifier.py)
+keywords:
+  review:
+    - '리뷰'
+    - 'review'
+    - '검토'
+    - '코드\s*확인'
+    - 'PR\s*리뷰'
+    - '버그\s*찾'
+    - '문제\s*찾'
+    - '개선\s*점'
+    - '피드백'
+  design:
+    - '설계'
+    - 'design'
+    - '아키텍처'
+    - 'architecture'
+    - '구조'
+    - '시스템\s*설계'
+    - 'API\s*설계'
+    - 'DB\s*설계'
+    - '스키마'
+  debug:
+    - '디버그'
+    - 'debug'
+    - '에러'
+    - 'error'
+    - '버그'
+    - 'bug'
+    - '안\s*됨'
+    - '작동.*않'
+    - '실패'
+    - 'fail'
+    - '오류'
+    - 'exception'
+  idea:
+    - '아이디어'
+    - 'idea'
+    - '브레인스토밍'
+    - 'brainstorm'
+    - '제안'
+    - 'suggest'
+    - '어떻게\s*하면'
+    - '방법'
+    - '대안'
+
+# Operational thresholds
+thresholds:
+  low_confidence: 50
+  trust_exclude: 0.5
+  trust_good: 1.0
+  trust_high: 1.5
+  trust_cap: 2.0
+  early_exit_confidence: 90
