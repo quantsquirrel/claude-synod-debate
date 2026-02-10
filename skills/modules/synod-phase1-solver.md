@@ -26,7 +26,7 @@
 
 Create temp directory for this round:
 ```bash
-TEMP_DIR="/tmp/synod-${SESSION_ID}"
+TEMP_DIR="${SESSION_DIR}/tmp"
 mkdir -p "$TEMP_DIR"
 ```
 
@@ -132,7 +132,7 @@ Run these commands in parallel using background execution:
 
 ```bash
 # Create marker files for completion tracking
-TEMP_DIR="/tmp/synod-${SESSION_ID}"
+TEMP_DIR="${SESSION_DIR}/tmp"
 
 # Gemini execution with completion marker
 (

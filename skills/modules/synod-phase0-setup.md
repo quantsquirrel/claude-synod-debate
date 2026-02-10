@@ -248,7 +248,7 @@ mkdir -p "${SESSION_DIR}/round-2-critic"
 mkdir -p "${SESSION_DIR}/round-3-defense"
 
 # Initialize progress display (v2.1)
-PROGRESS_FIFO="/tmp/synod-${SESSION_ID}-progress"
+PROGRESS_FIFO="${SESSION_DIR}/progress-fifo"
 mkfifo "$PROGRESS_FIFO" 2>/dev/null
 python3 "${TOOLS_DIR}/synod_progress.py" < "$PROGRESS_FIFO" &
 PROGRESS_PID=$!
