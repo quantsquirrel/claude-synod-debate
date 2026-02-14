@@ -88,8 +88,19 @@ ELSE:
         if [[ -x "$SYNOD_BIN/$cmd" ]]; then echo "$SYNOD_BIN/$cmd"; return 0; fi
         if [[ -x "$HOME/.local/bin/$cmd" ]]; then echo "$HOME/.local/bin/$cmd"; return 0; fi
         if command -v "$cmd" &>/dev/null; then command -v "$cmd"; return 0; fi
-        if [[ -f "${TOOLS_DIR}/${cmd}.py" ]]; then echo "python3 ${TOOLS_DIR}/${cmd}.py"; return 0; fi
+        if [[ -f "${TOOLS_DIR}/${cmd}.py" ]]; then echo "${TOOLS_DIR}/${cmd}.py"; return 0; fi
         return 1
+    }
+
+    # zsh-compatible CLI execution helper
+    # Handles both direct executables and .py scripts (zsh compatibility)
+    run_cli() {
+        local cli_path="$1"; shift
+        if [[ "$cli_path" == *.py ]]; then
+            python3 "$cli_path" "$@"
+        else
+            "$cli_path" "$@"
+        fi
     }
 
     GEMINI_CLI=$(resolve_cli "gemini-3")

@@ -145,7 +145,7 @@ TEMP_DIR="${SESSION_DIR}/tmp"
 # Gemini execution with completion marker
 (
   synod_progress '{"event":"model_start","model":"gemini"}'
-  $GEMINI_CLI --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout ${MODEL_TIMEOUT:-110} \
+  run_cli "$GEMINI_CLI" --model {GEMINI_MODEL} --thinking {GEMINI_THINKING} --timeout ${MODEL_TIMEOUT:-110} \
     < "${TEMP_DIR}/gemini-prompt.txt" \
     > "${TEMP_DIR}/gemini-response.txt" 2>&1
   echo $? > "${TEMP_DIR}/gemini-exit-code"
@@ -155,7 +155,7 @@ GEMINI_PID=$!
 # OpenAI execution with completion marker
 (
   synod_progress '{"event":"model_start","model":"openai"}'
-  $OPENAI_CLI --model {OPENAI_MODEL} {--reasoning REASONING if o3} --timeout ${MODEL_TIMEOUT:-110} \
+  run_cli "$OPENAI_CLI" --model {OPENAI_MODEL} {--reasoning REASONING if o3} --timeout ${MODEL_TIMEOUT:-110} \
     < "${TEMP_DIR}/openai-prompt.txt" \
     > "${TEMP_DIR}/openai-response.txt" 2>&1
   echo $? > "${TEMP_DIR}/openai-exit-code"
@@ -223,7 +223,7 @@ For each response, validate SID format:
 ```bash
 # Validate with fallback
 if [[ -n "$SYNOD_PARSER_CLI" ]]; then
-  $SYNOD_PARSER_CLI --validate "$(cat ${TEMP_DIR}/gemini-response.txt)"
+  run_cli "$SYNOD_PARSER_CLI" --validate "$(cat ${TEMP_DIR}/gemini-response.txt)"
   PARSER_EXIT=$?
 else
   echo "[Warning] synod-parser not found - using inline validation"
@@ -265,7 +265,7 @@ parse_response() {
   local output_file="$2"
 
   if [[ -n "$SYNOD_PARSER_CLI" ]]; then
-    $SYNOD_PARSER_CLI "$(cat "$input_file")" > "$output_file"
+    run_cli "$SYNOD_PARSER_CLI" "$(cat "$input_file")" > "$output_file"
   else
     # Minimal inline parser
     local content

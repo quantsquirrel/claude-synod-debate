@@ -65,6 +65,10 @@
     "Parallel execution within rounds",
     "Automatic retry with graceful degradation"
   ],
+  "compatibility": {
+    "mcpRouting": "Synod uses CLI-only model execution. Built-in MCP guard directives prevent routing interception in environments with MCP plugins (e.g., OMC CODEX-ROUTING).",
+    "shell": "Compatible with bash and zsh"
+  },
   "requirements": {
     "claudeCode": ">=1.0.0",
     "python": ">=3.9"

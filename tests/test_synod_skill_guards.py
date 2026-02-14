@@ -3,6 +3,7 @@
 Validates that:
 1. allowed-tools frontmatter excludes MCP tools
 2. MCP prohibition directives exist in skill markdown files
+3. Phase 1 uses run_cli pattern for zsh compatibility
 """
 
 import re
@@ -69,3 +70,23 @@ class TestMCPProhibitionDirectives:
         assert "CLI tools" in text or "CLI" in text
         assert "ask_codex" in text
         assert "ask_gemini" in text
+
+
+class TestZshCompatibility:
+    """Verify zsh-compatible CLI execution patterns."""
+
+    def test_synod_md_has_run_cli_helper(self):
+        text = SYNOD_MD.read_text()
+        assert "run_cli()" in text or "run_cli ()" in text
+        assert '*.py' in text
+        assert "python3" in text
+
+    def test_phase1_uses_run_cli_pattern(self):
+        text = PHASE1_MD.read_text()
+        assert 'run_cli "$GEMINI_CLI"' in text
+        assert 'run_cli "$OPENAI_CLI"' in text
+
+    def test_resolve_cli_no_python3_prefix(self):
+        text = SYNOD_MD.read_text()
+        # resolve_cli should NOT return "python3 ${TOOLS_DIR}/..."
+        assert 'echo "python3 ${TOOLS_DIR}' not in text
