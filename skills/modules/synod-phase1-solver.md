@@ -5,6 +5,7 @@
 > This phase MUST execute actual Bash commands to call `$GEMINI_CLI` and `$OPENAI_CLI`.
 > You (Claude) MUST NOT generate responses on behalf of Gemini or OpenAI.
 > You MUST NOT simulate, summarize, or shortcut external model calls.
+> You MUST NOT use `ask_codex`, `ask_gemini`, or any MCP tool as a substitute for CLI execution.
 > If CLI execution fails, follow the error-handling module — do NOT substitute your own answer.
 
 **Inputs:**
