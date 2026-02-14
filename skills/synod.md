@@ -125,6 +125,10 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
 
 ## Execution Flow Summary
 
+> **⛔ CRITICAL RULE: Phase 1 MUST call external models via actual Bash CLI execution.**
+> You (Claude) must NOT skip CLI calls or generate responses on behalf of Gemini/OpenAI.
+> Synthesis (Phase 4) is BLOCKED until real response files exist in `round-1-solver/`.
+
 ```
 1. PARSE arguments (Step 0.1) → determine MODE and PROBLEM
 2. VALIDATE input (Step 0.1b)
@@ -134,9 +138,12 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
    - Select model configurations
    - Create session directory and state
 5. ↓
-6. PHASE 1: Solver Round (modules/synod-phase1-solver.md)
-   - Execute Claude + Gemini + OpenAI in parallel
+6. PHASE 1: Solver Round (modules/synod-phase1-solver.md)  ⛔ MANDATORY EXTERNAL CALLS
+   - Execute Claude + Gemini + OpenAI in parallel via Bash tool
+   - Gemini: $GEMINI_CLI --model ... < prompt.txt > response.txt
+   - OpenAI: $OPENAI_CLI --model ... < prompt.txt > response.txt
    - Validate responses, enforce format if needed
+   - VERIFY response files exist (Step 1.7) — HALT if missing
    - Check early exit condition
 7. ↓
 8. PHASE 2: Critic Round (modules/synod-phase2-critic.md)
@@ -148,7 +155,8 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
     - Court-style debate (defense/prosecution/judge)
     - Resolve contentions
 11. ↓
-12. PHASE 4: Synthesis (modules/synod-phase4-synthesis.md)
+12. PHASE 4: Synthesis (modules/synod-phase4-synthesis.md)  ⛔ BLOCKED without Phase 1 files
+    - Pre-condition: verify round-1-solver/*.md files exist
     - Compile final evidence
     - Generate mode-specific output
     - Save final state
