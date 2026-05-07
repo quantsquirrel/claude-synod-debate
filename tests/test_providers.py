@@ -131,10 +131,12 @@ class TestOpenAIProvider:
         assert "o4mini" in provider_class.MODEL_MAP
         assert "gpt54" in provider_class.MODEL_MAP
         assert "gpt5mini" in provider_class.MODEL_MAP
+        assert "gpt54mini" in provider_class.MODEL_MAP
+        assert "gpt55" in provider_class.MODEL_MAP
 
     def test_default_model(self, provider_class):
         """Test DEFAULT_MODEL is set."""
-        assert provider_class.DEFAULT_MODEL == "gpt4o"
+        assert provider_class.DEFAULT_MODEL == "gpt54mini"
 
     def test_o_series_models_list(self, provider_class):
         """Test REASONING_MODELS attribute exists."""
@@ -142,6 +144,8 @@ class TestOpenAIProvider:
         assert "o3" in provider_class.REASONING_MODELS
         assert "o4mini" in provider_class.REASONING_MODELS
         assert "gpt54" in provider_class.REASONING_MODELS
+        assert "gpt54mini" in provider_class.REASONING_MODELS
+        assert "gpt55" in provider_class.REASONING_MODELS
 
     def test_timeout_config_exists(self, provider_class):
         """Test TIMEOUT_CONFIG attribute exists."""

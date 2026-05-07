@@ -7,7 +7,8 @@ Usage:
   gemini-3 "prompt" [options]
   gemini-3 --model flash --thinking high "prompt"
 
-Models: flash (default), pro
+Models: flash (default), pro, 3.1-flash-lite, 3.1-pro, 2.5-flash, 2.5-pro,
+        flash-latest, pro-latest, flash-lite-latest, 3-pro
 Thinking: minimal, low, medium (default), high
 """
 
@@ -44,6 +45,11 @@ class GeminiProvider(BaseProvider):
         "3.1-pro": "gemini-3.1-pro-preview",
         "2.5-flash": "gemini-2.5-flash",
         "2.5-pro": "gemini-2.5-pro",
+        # Stable aliases avoid preview-EOL migrations (e.g. 3.0 EOL incident on 2026-03-09)
+        "flash-latest": "gemini-flash-latest",
+        "pro-latest": "gemini-pro-latest",
+        "flash-lite-latest": "gemini-flash-lite-latest",
+        "3-pro": "gemini-3-pro-preview",
     }
     DEFAULT_MODEL = "flash"
 
@@ -104,7 +110,10 @@ class GeminiProvider(BaseProvider):
         parser.add_argument(
             "-m",
             "--model",
-            choices=["flash", "pro", "3.1-flash-lite", "3.1-pro", "2.5-flash", "2.5-pro"],
+            choices=[
+                "flash", "pro", "3.1-flash-lite", "3.1-pro", "2.5-flash", "2.5-pro",
+                "flash-latest", "pro-latest", "flash-lite-latest", "3-pro",
+            ],
             default="flash",
             help="Model to use (default: flash)",
         )

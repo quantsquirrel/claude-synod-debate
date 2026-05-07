@@ -32,6 +32,10 @@ class TestModelMapping:
         assert "3.1-pro" in gemini_cli.GeminiProvider.MODEL_MAP
         assert "2.5-flash" in gemini_cli.GeminiProvider.MODEL_MAP
         assert "2.5-pro" in gemini_cli.GeminiProvider.MODEL_MAP
+        assert "flash-latest" in gemini_cli.GeminiProvider.MODEL_MAP
+        assert "pro-latest" in gemini_cli.GeminiProvider.MODEL_MAP
+        assert "flash-lite-latest" in gemini_cli.GeminiProvider.MODEL_MAP
+        assert "3-pro" in gemini_cli.GeminiProvider.MODEL_MAP
 
     def test_model_names_correct(self):
         """Test that model names are correctly mapped."""
@@ -41,6 +45,10 @@ class TestModelMapping:
         assert gemini_cli.GeminiProvider.MODEL_MAP["3.1-pro"] == "gemini-3.1-pro-preview"
         assert gemini_cli.GeminiProvider.MODEL_MAP["2.5-flash"] == "gemini-2.5-flash"
         assert gemini_cli.GeminiProvider.MODEL_MAP["2.5-pro"] == "gemini-2.5-pro"
+        assert gemini_cli.GeminiProvider.MODEL_MAP["flash-latest"] == "gemini-flash-latest"
+        assert gemini_cli.GeminiProvider.MODEL_MAP["pro-latest"] == "gemini-pro-latest"
+        assert gemini_cli.GeminiProvider.MODEL_MAP["flash-lite-latest"] == "gemini-flash-lite-latest"
+        assert gemini_cli.GeminiProvider.MODEL_MAP["3-pro"] == "gemini-3-pro-preview"
 
 
 class TestThinkingMapping:

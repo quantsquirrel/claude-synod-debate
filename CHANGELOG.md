@@ -14,6 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration with Claude Code's native analysis capabilities
 - Batch processing for multiple problems in sequence
 - Export debates to markdown reports with embedded confidence metrics
+- Refresh `benchmark/config.yaml` (currently references stale models: gpt-4o, claude-sonnet-4-20250514, gemini-2.0-flash)
+
+---
+
+## [3.4.0] - 2026-05-07
+
+### Added
+- **OpenAI lineup expanded**: `gpt55` (gpt-5.5, released 2026-04-23) and `gpt54mini` (gpt-5.4-mini) added to `MODEL_MAP`. Both registered as reasoning-capable in `REASONING_MODELS`.
+- **Gemini stable aliases**: `flash-latest`, `pro-latest`, `flash-lite-latest` added — these route to provider-side stable pointers, removing dependency on `*-preview` model IDs that have caused EOL migration incidents.
+- **Gemini 3-pro-preview**: `3-pro` alias added (separate model from `3.1-pro-preview`).
+- **TIMEOUT_CONFIG entries**: gpt55 (low/medium/high = 90/120/180s) and gpt54mini (60/90/120s) calibrated against measured p50/max latency on a 5-problem A/B run.
+
+### Changed
+- **OpenAI `DEFAULT_MODEL`**: `gpt4o` → `gpt54mini`. Direct `openai-cli` invocations without `--model` now use the more recent and cheaper model. Synod-mode-specific defaults (review/design/debug/idea/general) are unchanged.
+- **Fast tier Gemini default**: `flash` (gemini-3-flash-preview) → `flash-lite-latest` (gemini-flash-lite-latest). Measured p50 latency dropped from 12.7s to 1.9s (≈6.7× faster) with no accuracy regression on 5-problem GSM8K-style A/B. Standard and deep tiers unchanged.
+
+### Verified
+- **Live API smoke test**: 11/11 currently-configured models reachable.
+- **SID format compliance**: 10/10 reachable candidates produce valid `<confidence>` and `<semantic_focus>` blocks.
+- **Reachability gotcha**: `gpt-5-pro`, `gpt-5.4-pro`, `gpt-5.5-pro` appear in `models.list` but return 404 on chat completions — NOT added (would have silently broken deep tier). Will revisit when access is granted.
 
 ---
 
