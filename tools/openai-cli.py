@@ -8,7 +8,7 @@ Usage:
   openai-cli --prompt "prompt" [--model MODEL] [--reasoning LEVEL]
 
 Models: gpt54mini (default), gpt4o, o3, o4mini, gpt54, gpt5mini, gpt55
-Reasoning: low, medium (default), high (o-series + gpt5x only)
+Reasoning: low, medium (default), high (o-series + GPT-5-family models)
 
 Examples:
   echo "2+2는?" | openai-cli
@@ -19,9 +19,7 @@ Examples:
 
 import argparse
 import os
-import random
 import sys
-import time
 
 try:
     import httpx
@@ -33,7 +31,7 @@ except ImportError:
 
 # Import BaseProvider
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from base_provider import BaseProvider
+from base_provider import BaseProvider  # noqa: E402
 
 
 class OpenAIProvider(BaseProvider):
@@ -53,7 +51,7 @@ class OpenAIProvider(BaseProvider):
     DEFAULT_MODEL = "gpt54mini"
 
     # Reasoning models support reasoning_effort
-    REASONING_MODELS = ["o3", "o4mini", "gpt54", "gpt54mini", "gpt55"]
+    REASONING_MODELS = ["o3", "o4mini", "gpt54", "gpt5mini", "gpt54mini", "gpt55"]
 
     # Timeout configuration (seconds). Values calibrated against measured p50/max latency
     # across 5-problem GSM8K-style A/B (2026-05-07): values are P50 × 30 to absorb tail.
@@ -83,6 +81,14 @@ class OpenAIProvider(BaseProvider):
 
     # Reasoning levels for downgrade
     REASONING_LEVELS = ["high", "medium", "low"]
+
+    def get_timeout_ms(self, args, model_key: str, default_ms: int = 300_000) -> int:
+        """Use model/reasoning-specific timeout defaults when no timeout is supplied."""
+        reasoning = args.reasoning if hasattr(args, "reasoning") else "medium"
+        configured_timeout = self.TIMEOUT_CONFIG.get((model_key, reasoning))
+        if configured_timeout is not None:
+            default_ms = configured_timeout * 1000
+        return super().get_timeout_ms(args, model_key, default_ms=default_ms)
 
     def create_client(self, timeout_ms: int):
         """Create OpenAI client with timeout."""
@@ -134,7 +140,7 @@ class OpenAIProvider(BaseProvider):
             "-r",
             choices=["low", "medium", "high"],
             default="medium",
-            help="Reasoning 레벨 - o-series 모델 전용 (기본값: medium)",
+            help="Reasoning 레벨 - reasoning 지원 모델 전용 (기본값: medium)",
         )
         parser.add_argument(
             "--no-adaptive",

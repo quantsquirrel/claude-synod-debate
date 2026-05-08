@@ -46,15 +46,11 @@ def try_load_provider(filename):
         # Find the Provider class (subclass of BaseProvider, but not BaseProvider itself)
         for name in dir(module):
             obj = getattr(module, name)
-            if (
-                isinstance(obj, type)
-                and issubclass(obj, BaseProvider)
-                and obj is not BaseProvider
-            ):
+            if isinstance(obj, type) and issubclass(obj, BaseProvider) and obj is not BaseProvider:
                 return module, obj
 
         return module, None
-    except (ImportError, SystemExit) as e:
+    except (ImportError, SystemExit):
         # SystemExit can happen if enable gate fails (grok, mistral)
         return None, None
 
@@ -144,6 +140,7 @@ class TestOpenAIProvider:
         assert "o3" in provider_class.REASONING_MODELS
         assert "o4mini" in provider_class.REASONING_MODELS
         assert "gpt54" in provider_class.REASONING_MODELS
+        assert "gpt5mini" in provider_class.REASONING_MODELS
         assert "gpt54mini" in provider_class.REASONING_MODELS
         assert "gpt55" in provider_class.REASONING_MODELS
 
@@ -489,9 +486,9 @@ class TestProviderAbstractMethods:
         assert hasattr(provider, "create_client")
         assert hasattr(provider, "generate")
         assert hasattr(provider, "add_provider_args")
-        assert callable(getattr(provider, "create_client"))
-        assert callable(getattr(provider, "generate"))
-        assert callable(getattr(provider, "add_provider_args"))
+        assert callable(provider.create_client)
+        assert callable(provider.generate)
+        assert callable(provider.add_provider_args)
 
     def test_openai_implements_abstract_methods(self):
         """Test OpenAI provider implements all abstract methods."""

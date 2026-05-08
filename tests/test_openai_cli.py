@@ -55,7 +55,7 @@ class TestReasoningModels:
         assert "o4mini" in openai_cli.OpenAIProvider.REASONING_MODELS
         assert "gpt4o" not in openai_cli.OpenAIProvider.REASONING_MODELS
         assert "gpt54" in openai_cli.OpenAIProvider.REASONING_MODELS
-        assert "gpt5mini" not in openai_cli.OpenAIProvider.REASONING_MODELS
+        assert "gpt5mini" in openai_cli.OpenAIProvider.REASONING_MODELS
         assert "gpt54mini" in openai_cli.OpenAIProvider.REASONING_MODELS
         assert "gpt55" in openai_cli.OpenAIProvider.REASONING_MODELS
 
@@ -83,6 +83,28 @@ class TestTimeoutConfig:
         o3_high = openai_cli.OpenAIProvider.TIMEOUT_CONFIG[("o3", "high")]
         # Should be one of the highest timeouts
         assert o3_high >= 180
+
+    def test_provider_timeout_config_applies_to_default_model(self, monkeypatch):
+        """Default CLI timeout comes from TIMEOUT_CONFIG for the chosen model/reasoning."""
+        monkeypatch.delenv("SYNOD_V2_ADAPTIVE_TIMEOUT", raising=False)
+        provider = openai_cli.OpenAIProvider()
+        parser = provider.build_parser()
+        args, _ = parser.parse_known_args(["prompt"])
+
+        timeout = provider.get_timeout_ms(args, args.model)
+
+        assert args.model == "gpt54mini"
+        assert args.reasoning == "medium"
+        assert timeout == openai_cli.OpenAIProvider.TIMEOUT_CONFIG[("gpt54mini", "medium")] * 1000
+
+    def test_explicit_timeout_overrides_provider_default(self, monkeypatch):
+        """User-supplied timeout still overrides provider defaults."""
+        monkeypatch.delenv("SYNOD_V2_ADAPTIVE_TIMEOUT", raising=False)
+        provider = openai_cli.OpenAIProvider()
+        parser = provider.build_parser()
+        args, _ = parser.parse_known_args(["--timeout", "45", "prompt"])
+
+        assert provider.get_timeout_ms(args, args.model) == 45_000
 
 
 class TestReasoningLevels:
@@ -122,7 +144,7 @@ class TestGenerateWithRetry:
     def test_o_series_includes_reasoning_effort(self):
         """Test that reasoning-capable models are in REASONING_MODELS."""
         for model in openai_cli.OpenAIProvider.REASONING_MODELS:
-            assert model in ["o3", "o4mini", "gpt54", "gpt54mini", "gpt55"]
+            assert model in ["o3", "o4mini", "gpt54", "gpt5mini", "gpt54mini", "gpt55"]
 
     def test_gpt4o_excludes_reasoning_effort(self):
         """Test that gpt4o should not use reasoning_effort."""
@@ -185,10 +207,17 @@ class TestTimeoutStrategy:
         """Test that o-series models have generally higher timeouts."""
         # O3 should have higher timeouts than gpt4o on average
         o3_avg = (
-            sum(openai_cli.OpenAIProvider.TIMEOUT_CONFIG[("o3", level)] for level in ["low", "medium", "high"]) / 3
+            sum(
+                openai_cli.OpenAIProvider.TIMEOUT_CONFIG[("o3", level)]
+                for level in ["low", "medium", "high"]
+            )
+            / 3
         )
         gpt4o_avg = (
-            sum(openai_cli.OpenAIProvider.TIMEOUT_CONFIG[("gpt4o", level)] for level in ["low", "medium", "high"])
+            sum(
+                openai_cli.OpenAIProvider.TIMEOUT_CONFIG[("gpt4o", level)]
+                for level in ["low", "medium", "high"]
+            )
             / 3
         )
         assert o3_avg > gpt4o_avg

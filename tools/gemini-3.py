@@ -8,7 +8,7 @@ Usage:
   gemini-3 --model flash --thinking high "prompt"
 
 Models: flash (default), pro, 3.1-flash-lite, 3.1-pro, 2.5-flash, 2.5-pro,
-        flash-latest, pro-latest, flash-lite-latest, 3-pro
+        flash-latest, pro-latest, flash-lite-latest
 Thinking: minimal, low, medium (default), high
 """
 
@@ -30,7 +30,7 @@ except ImportError:
 
 # Import base provider
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from base_provider import BaseProvider
+from base_provider import BaseProvider  # noqa: E402
 
 
 class GeminiProvider(BaseProvider):
@@ -49,7 +49,6 @@ class GeminiProvider(BaseProvider):
         "flash-latest": "gemini-flash-latest",
         "pro-latest": "gemini-pro-latest",
         "flash-lite-latest": "gemini-flash-lite-latest",
-        "3-pro": "gemini-3-pro-preview",
     }
     DEFAULT_MODEL = "flash"
 
@@ -111,8 +110,15 @@ class GeminiProvider(BaseProvider):
             "-m",
             "--model",
             choices=[
-                "flash", "pro", "3.1-flash-lite", "3.1-pro", "2.5-flash", "2.5-pro",
-                "flash-latest", "pro-latest", "flash-lite-latest", "3-pro",
+                "flash",
+                "pro",
+                "3.1-flash-lite",
+                "3.1-pro",
+                "2.5-flash",
+                "2.5-pro",
+                "flash-latest",
+                "pro-latest",
+                "flash-lite-latest",
             ],
             default="flash",
             help="Model to use (default: flash)",
