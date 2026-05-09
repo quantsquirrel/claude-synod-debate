@@ -23,25 +23,24 @@ Hex sources (verified 2026-05):
 
 from __future__ import annotations
 
-
 BRANDING: dict[str, dict[str, str]] = {
     "claude": {
         "label": "Claude",
-        "hex": "#D97757",     # warm coral
-        "rich": "orange3",    # Rich named-color when truecolor unavailable
-        "glyph": "✻",         # U+273B
+        "hex": "#D97757",  # warm coral
+        "rich": "orange3",  # Rich named-color when truecolor unavailable
+        "glyph": "✻",  # U+273B
     },
     "gemini": {
         "label": "Gemini",
-        "hex": "#4285F4",     # Google Blue
+        "hex": "#4285F4",  # Google Blue
         "rich": "blue",
-        "glyph": "✦",         # U+2726
+        "glyph": "✦",  # U+2726
     },
     "openai": {
         "label": "OpenAI",
-        "hex": "#10A37F",     # signature teal-green
+        "hex": "#10A37F",  # signature teal-green
         "rich": "green",
-        "glyph": "❀",         # U+2740
+        "glyph": "❀",  # U+2740
     },
 }
 
