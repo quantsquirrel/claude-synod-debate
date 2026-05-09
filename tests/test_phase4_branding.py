@@ -4,9 +4,8 @@ Verifies that the orchestrator-side instruction text in
 `skills/synod/modules/synod-phase4-synthesis.md` references:
 
 1. The PRIMARY claim extraction protocol (`semantic_focus[0]`).
-2. The HTML-spanned `◾` markers from `tools/model_branding.markdown_marker(...)`
-   on the correct model rows. This is "color the text" via inline color,
-   not an emoji prefix.
+2. The unicode brand-shape glyphs from `tools/model_branding.markdown_marker(...)`
+   on the correct model rows.
 3. The hex codes from `tools/model_branding.py.BRANDING` so that the
    markdown layer and the HUD layer cite the same single source of truth.
 
@@ -41,11 +40,11 @@ class TestPhase4Instructions:
         assert "no primary claim extracted" in body
         assert "120 character" in body  # truncation rule
 
-    def test_branded_model_rows_use_html_color_marker(self):
+    def test_branded_model_rows_use_brand_glyph(self):
         body = _phase4_text()
-        assert '<span style="color:#D97757">◾</span> **Claude (Validator):**' in body
-        assert '<span style="color:#4285F4">◾</span> **Gemini (Architect):**' in body
-        assert '<span style="color:#10A37F">◾</span> **OpenAI (Explorer):**' in body
+        assert "✻ **Claude (Validator):**" in body
+        assert "✦ **Gemini (Architect):**" in body
+        assert "❀ **OpenAI (Explorer):**" in body
 
     def test_three_brand_hex_codes_are_cited(self):
         body = _phase4_text()
