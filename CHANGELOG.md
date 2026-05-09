@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.6.0] - 2026-05-09
+
+### Added
+- **Branded per-model claim summary in Phase 4 collapsible** (`skills/synod/modules/synod-phase4-synthesis.md`). The "숙의 과정" / "모델 기여" list now renders each agent's PRIMARY `semantic_focus` claim with a brand emoji prefix that mirrors the HUD color identity:
+  - 🟠 **Claude (Validator)** — `#D97757` (warm coral, claude.ai)
+  - 🔵 **Gemini (Architect)** — `#4285F4` (Google Blue)
+  - 🟢 **OpenAI (Explorer)** — `#10A37F` (signature teal)
+- **`tools/model_branding.py`** — single source of truth for the (label, hex, emoji, rich-color) tuple per first-party provider. Both `tools/synod_progress.py` HUD and the Phase 4 markdown layer source from this module so the two surfaces cannot drift.
+- **Hex codes available to HUD** — `MODEL_CONFIG` now stores the truecolor hex per model in addition to the existing Rich named-color, opening a path to a future truecolor HUD without further data plumbing.
+- **Documentation-as-test guard** — `tests/test_phase4_branding.py` asserts that the Phase 4 instruction text references the correct emoji and hex codes for every model, so emoji-or-color drift surfaces as a CI failure rather than a silent visual regression.
+
+### Fixed
+- **`semantic_focus[0]` numeric prefix leak** (`tools/synod-parser.py`). The split regex consumed the newline before each `\d+. ` marker for items 1..N, but the first item — starting at `content.strip()` with no leading newline — kept its `"1. "` prefix. `extract_semantic_focus()` now strips a leading `\d+\.\s*` from every item so the output is uniform. Regression test added.
+
+### Changed
+- **HUD claude row color**: `magenta` → `orange3`. The 256-color name is the closest fit for the `#D97757` brand coral; truecolor terminals can already render the exact hex via the new `MODEL_CONFIG[model]["hex"]` field.
+
+---
+
 ## [3.5.0] - 2026-05-09
 
 ### Added
