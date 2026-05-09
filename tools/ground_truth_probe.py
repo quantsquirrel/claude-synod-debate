@@ -9,9 +9,11 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 try:
     import tomllib
+
     _TOMLLIB_AVAILABLE = True
 except ImportError:
     _TOMLLIB_AVAILABLE = False
@@ -20,6 +22,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
+
 
 def detect_lang(target: Path) -> str:
     if (target / "pyproject.toml").exists() or (target / "setup.py").exists():
@@ -36,6 +39,7 @@ def detect_lang(target: Path) -> str:
 # ---------------------------------------------------------------------------
 # pyproject.toml parsing (tomllib on 3.11+, regex fallback on 3.10)
 # ---------------------------------------------------------------------------
+
 
 def _parse_pyproject_regex(text: str) -> dict:
     """Minimal regex-based pyproject.toml parser for [project] section."""
@@ -73,47 +77,102 @@ def parse_pyproject(target: Path) -> dict:
 # Artifact: import_probe.json
 # ---------------------------------------------------------------------------
 
+
+def _python_import_candidates(target: Path, project_info: dict) -> list[str]:
+    """Return likely import roots without assuming project.name is importable."""
+    candidates: list[str] = []
+    project_name = project_info.get("name", "")
+    if project_name:
+        candidates.append(project_name.replace("-", "_"))
+
+    search_roots = [target]
+    src_root = target / "src"
+    if src_root.is_dir():
+        search_roots.append(src_root)
+
+    for root in search_roots:
+        try:
+            for child in root.iterdir():
+                if not child.is_dir() or child.name.startswith((".", "__")):
+                    continue
+                if (child / "__init__.py").exists() or any(child.glob("*.py")):
+                    candidates.append(child.name)
+        except OSError:
+            continue
+
+    return list(dict.fromkeys(candidates))
+
+
 def run_import_probe(target: Path, lang: str, project_info: dict) -> dict:
     attempts = []
     can_import = False
 
     if lang == "python":
-        pkg_name = project_info.get("name", "")
-        if not pkg_name:
-            # fallback: look for a directory that looks like a package
-            candidates = [d.name for d in target.iterdir()
-                          if d.is_dir() and (d / "__init__.py").exists()]
-            pkg_name = candidates[0] if candidates else ""
+        candidates = _python_import_candidates(target, project_info)
 
-        if pkg_name:
-            pkg_python = pkg_name.replace("-", "_")
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-c", f"import {pkg_python}"],
-                    capture_output=True, text=True, timeout=15,
-                    cwd=str(target)
+        if candidates:
+            pythonpath = str(target)
+            if (target / "src").is_dir():
+                pythonpath = f"{target / 'src'}{os.pathsep}{pythonpath}"
+
+            for pkg_python in candidates:
+                if can_import:
+                    break
+
+                if not re.match(r"^[A-Za-z_]\w*$", pkg_python):
+                    attempts.append(
+                        {
+                            "module": pkg_python,
+                            "result": "fail",
+                            "error": "Invalid Python module name",
+                        }
+                    )
+                    continue
+
+                env = os.environ.copy()
+                env["PYTHONPATH"] = (
+                    f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
+                    if env.get("PYTHONPATH")
+                    else pythonpath
                 )
-                success = result.returncode == 0
-                error_msg = (result.stderr.strip().splitlines()[-1]
-                             if result.stderr.strip() else "")
-                attempts.append({
-                    "module": pkg_python,
-                    "result": "ok" if success else "fail",
-                    "error": "" if success else error_msg,
-                })
-                can_import = success
-            except subprocess.TimeoutExpired:
-                attempts.append({
-                    "module": pkg_python,
-                    "result": "fail",
-                    "error": "TimeoutExpired",
-                })
+
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-c", f"import {pkg_python}"],
+                        capture_output=True,
+                        env=env,
+                        text=True,
+                        timeout=15,
+                        cwd=str(target),
+                    )
+                    success = result.returncode == 0
+                    error_msg = (
+                        result.stderr.strip().splitlines()[-1] if result.stderr.strip() else ""
+                    )
+                    attempts.append(
+                        {
+                            "module": pkg_python,
+                            "result": "ok" if success else "fail",
+                            "error": "" if success else error_msg,
+                        }
+                    )
+                    can_import = success
+                except subprocess.TimeoutExpired:
+                    attempts.append(
+                        {
+                            "module": pkg_python,
+                            "result": "fail",
+                            "error": "TimeoutExpired",
+                        }
+                    )
         else:
-            attempts.append({
-                "module": "(unknown)",
-                "result": "fail",
-                "error": "Could not determine top-level package name",
-            })
+            attempts.append(
+                {
+                    "module": "(unknown)",
+                    "result": "fail",
+                    "error": "Could not determine top-level package name",
+                }
+            )
 
     return {
         "lang": lang,
@@ -126,6 +185,7 @@ def run_import_probe(target: Path, lang: str, project_info: dict) -> dict:
 # Artifact: test_collect.json
 # ---------------------------------------------------------------------------
 
+
 def run_test_collect(target: Path) -> dict:
     runner = "pytest"
     collected = 0
@@ -135,18 +195,27 @@ def run_test_collect(target: Path) -> dict:
     try:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-header"],
-            capture_output=True, text=True, timeout=20,
-            cwd=str(target)
+            capture_output=True,
+            text=True,
+            timeout=20,
+            cwd=str(target),
         )
         output = result.stdout + result.stderr
         # Parse summary line like "3 tests collected" or "no tests ran"
         m = re.search(r"(\d+)\s+(?:test[s]?\s+)?collected", output)
         if m:
             collected = int(m.group(1))
-        # Collect error lines
+        # Collect actual pytest collection errors without matching benign test names like
+        # ``test_sanitize_error_*``.
         for line in output.splitlines():
-            if "ERROR" in line or "error" in line.lower():
-                errors.append(line.strip())
+            stripped = line.strip()
+            if (
+                stripped.startswith("ERROR ")
+                or "ERROR collecting" in stripped
+                or stripped.startswith("FAILED ")
+                or stripped.startswith("Traceback ")
+            ):
+                errors.append(stripped)
         errors = errors[:10]
         # Sample test item names
         for line in output.splitlines():
@@ -170,14 +239,28 @@ def run_test_collect(target: Path) -> dict:
 # Artifact: file_tree.txt
 # ---------------------------------------------------------------------------
 
+
 def build_file_tree(target: Path, max_entries: int) -> str:
     lines = []
     try:
         for root, dirs, files in os.walk(str(target)):
             # Skip hidden dirs and common noise
-            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in {
-                "__pycache__", "node_modules", ".git", "dist", "build", ".tox", "venv", ".venv"
-            })
+            dirs[:] = sorted(
+                d
+                for d in dirs
+                if not d.startswith(".")
+                and d
+                not in {
+                    "__pycache__",
+                    "node_modules",
+                    ".git",
+                    "dist",
+                    "build",
+                    ".tox",
+                    "venv",
+                    ".venv",
+                }
+            )
             rel_root = Path(root).relative_to(target)
             for fname in sorted(files):
                 rel_path = str(rel_root / fname) if str(rel_root) != "." else fname
@@ -194,14 +277,15 @@ def build_file_tree(target: Path, max_entries: int) -> str:
 # Artifact: version_pins.json
 # ---------------------------------------------------------------------------
 
-def get_changelog_top(target: Path) -> str | None:
+
+def get_changelog_top(target: Path) -> Optional[str]:
     for name in ("CHANGELOG.md", "CHANGELOG", "CHANGES.md", "CHANGES"):
         path = target / name
         if path.exists():
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
                 for line in text.splitlines():
-                    m = re.match(r"^#+\s*(v?\d[\d.]+[^\s]*)", line)
+                    m = re.match(r"^#+\s*\[?(v?\d[\d.]+[^\]\s]*)", line)
                     if m:
                         return m.group(1)
             except Exception:
@@ -251,8 +335,8 @@ def run_version_pins(target: Path, project_info: dict) -> dict:
 # Artifact: integrity.json
 # ---------------------------------------------------------------------------
 
-def compute_integrity(import_probe: dict, test_collect: dict,
-                      version_pins: dict) -> dict:
+
+def compute_integrity(import_probe: dict, test_collect: dict, version_pins: dict) -> dict:
     issues = []
     can_run = import_probe.get("can_import_top_level", False)
     test_count = test_collect.get("collected", 0)
@@ -272,9 +356,13 @@ def compute_integrity(import_probe: dict, test_collect: dict,
         issues.append({"severity": "medium", "msg": "No tests collected"})
 
     if version_consistency == "mismatch":
-        issues.append({"severity": "medium",
-                       "msg": f"Version mismatch: pyproject={version_pins.get('pyproject_toml')} "
-                              f"changelog={version_pins.get('changelog_top')}"})
+        issues.append(
+            {
+                "severity": "medium",
+                "msg": f"Version mismatch: pyproject={version_pins.get('pyproject_toml')} "
+                f"changelog={version_pins.get('changelog_top')}",
+            }
+        )
 
     for err in test_collect.get("errors", []):
         if err:
@@ -304,6 +392,7 @@ def compute_integrity(import_probe: dict, test_collect: dict,
 # Status logic
 # ---------------------------------------------------------------------------
 
+
 def compute_status(import_probe: dict, integrity: dict) -> str:
     has_high = any(i["severity"] == "high" for i in integrity.get("issues", []))
     can_run = import_probe.get("can_import_top_level", False)
@@ -323,23 +412,22 @@ def compute_status(import_probe: dict, integrity: dict) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Ground-truth probe for synod-plus (Contract #1)"
-    )
+    parser = argparse.ArgumentParser(description="Ground-truth probe for synod-plus (Contract #1)")
     parser.add_argument("target_path", help="Path to codebase root")
-    parser.add_argument("--lang", choices=["auto", "python", "node", "go", "rust"],
-                        default="auto")
-    parser.add_argument("--output-dir", default=None,
-                        help="Directory for artifact files (default: <target>/.synod-plus-probe/)")
+    parser.add_argument("--lang", choices=["auto", "python", "node", "go", "rust"], default="auto")
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory for artifact files (default: <target>/.synod-plus-probe/)",
+    )
     parser.add_argument("--max-tree-entries", type=int, default=200)
     args = parser.parse_args()
 
     target = Path(args.target_path).resolve()
     if not target.exists() or not os.access(str(target), os.R_OK):
-        print(json.dumps({
-            "error": f"Target path does not exist or is not readable: {target}"
-        }))
+        print(json.dumps({"error": f"Target path does not exist or is not readable: {target}"}))
         sys.exit(2)
 
     output_dir = Path(args.output_dir) if args.output_dir else target / ".synod-plus-probe"
@@ -362,23 +450,26 @@ def main():
 
     # Write artifacts
     (output_dir / "import_probe.json").write_text(
-        json.dumps(import_probe, indent=2), encoding="utf-8")
+        json.dumps(import_probe, indent=2), encoding="utf-8"
+    )
     (output_dir / "test_collect.json").write_text(
-        json.dumps(test_collect, indent=2), encoding="utf-8")
+        json.dumps(test_collect, indent=2), encoding="utf-8"
+    )
     (output_dir / "file_tree.txt").write_text(file_tree_text, encoding="utf-8")
     (output_dir / "version_pins.json").write_text(
-        json.dumps(version_pins, indent=2), encoding="utf-8")
-    (output_dir / "integrity.json").write_text(
-        json.dumps(integrity, indent=2), encoding="utf-8")
+        json.dumps(version_pins, indent=2), encoding="utf-8"
+    )
+    (output_dir / "integrity.json").write_text(json.dumps(integrity, indent=2), encoding="utf-8")
 
     # Compute final status
     status = compute_status(import_probe, integrity)
 
     # Build top_findings
     top_findings = []
-    for attempt in import_probe.get("attempts", []):
-        if attempt.get("result") == "fail" and attempt.get("error"):
-            top_findings.append(attempt["error"])
+    if not import_probe.get("can_import_top_level", False):
+        for attempt in import_probe.get("attempts", []):
+            if attempt.get("result") == "fail" and attempt.get("error"):
+                top_findings.append(attempt["error"])
     for issue in integrity.get("issues", []):
         msg = issue.get("msg", "")
         if msg and msg not in top_findings:

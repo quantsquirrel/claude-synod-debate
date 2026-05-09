@@ -92,7 +92,7 @@ python3 "${PLUGIN_ROOT}/tools/tier_matrix.py" \
 If `tier.json.requires_async=true` and the current runtime lacks async support
 (v3.4.0 does not implement async dispatch yet), warn the user:
 
-> ⚠ Selected tier requires wall-clock ≥ 300s. v3.4.0 runs synchronously —
+> ⚠ Selected tier requires wall-clock ≥ 300s. The current runtime runs synchronously —
 > expect a long wait. Downgrade to `--tier standard` for ≤120s.
 
 Export the roster so Phase 1 solvers can consume it:

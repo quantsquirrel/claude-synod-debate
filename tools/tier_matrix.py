@@ -73,7 +73,9 @@ def main() -> None:
     tier = resolve_tier(args.tier, args.classifier_json)
 
     if tier not in tier_map:
-        print(f"error: invalid tier '{tier}'. Valid tiers: {sorted(tier_map.keys())}", file=sys.stderr)
+        print(
+            f"error: invalid tier '{tier}'. Valid tiers: {sorted(tier_map.keys())}", file=sys.stderr
+        )
         sys.exit(2)
 
     models: list = tier_map[tier]
