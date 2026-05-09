@@ -193,13 +193,16 @@ with each model's color identity (matches the HUD in
    `*(no primary claim extracted)*` instead.
 4. If longer than 120 characters, truncate and append `…`.
 
-**Brand prefixes** (do not substitute — these match the HUD palette):
+**Brand markers** (do not substitute — these match `tools/model_branding.py`).
+Each marker is an HTML-spanned `◾` glyph rendered in the model's brand
+color. Claude Code markdown applies `<span style="color:..">` inline;
+this is the "color the text" requirement, not an emoji prefix.
 
-| Model | Emoji | Hex (HUD truecolor) |
+| Model | Markdown marker | Rich color (HUD) |
 |---|---|---|
-| Claude | 🟠 | `#D97757` |
-| Gemini | 🔵 | `#4285F4` |
-| OpenAI | 🟢 | `#10A37F` |
+| Claude | `<span style="color:#D97757">◾</span>` | `orange3` |
+| Gemini | `<span style="color:#4285F4">◾</span>` | `blue` |
+| OpenAI | `<span style="color:#10A37F">◾</span>` | `green` |
 
 **Render exactly:**
 
@@ -208,18 +211,18 @@ with each model's color identity (matches the HUD in
 <summary>숙의 과정</summary>
 
 ### 모델 기여
-- 🟠 **Claude (Validator):** {claude_primary_claim}
-- 🔵 **Gemini (Architect):** {gemini_primary_claim}
-- 🟢 **OpenAI (Explorer):** {openai_primary_claim}
+- <span style="color:#D97757">◾</span> **Claude (Validator):** {claude_primary_claim}
+- <span style="color:#4285F4">◾</span> **Gemini (Architect):** {gemini_primary_claim}
+- <span style="color:#10A37F">◾</span> **OpenAI (Explorer):** {openai_primary_claim}
 
 ### 해결된 주요 쟁점
 1. {contention} -> {resolution}
 2. {contention} -> {resolution}
 
 ### 신뢰 점수
-- 🟠 Claude: {score} ({rating})
-- 🔵 Gemini: {score} ({rating})
-- 🟢 OpenAI: {score} ({rating})
+- <span style="color:#D97757">◾</span> Claude: {score} ({rating})
+- <span style="color:#4285F4">◾</span> Gemini: {score} ({rating})
+- <span style="color:#10A37F">◾</span> OpenAI: {score} ({rating})
 
 </details>
 ```
