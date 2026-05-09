@@ -178,25 +178,48 @@ print(get_template('$MODE'))
 
 ## Step 4.4: Include Decision Rationale
 
-Add a collapsible section showing deliberation process:
+Add a collapsible section showing the deliberation process. The "모델 기여"
+list MUST be populated from each agent's PRIMARY semantic_focus claim
+extracted in Phase 1, rendered under the brand emoji prefix that pairs
+with each model's color identity (matches the HUD in
+`tools/synod_progress.py` and the BRANDING constants in
+`tools/model_branding.py`).
+
+**Per-agent claim extraction.** For each agent in `[claude, gemini, openai]`:
+
+1. Read `${SESSION_DIR}/round-1-solver/{agent}-parsed.json`.
+2. Take `semantic_focus[0]` (PRIMARY claim).
+3. If the value is empty or missing, render the placeholder
+   `*(no primary claim extracted)*` instead.
+4. If longer than 120 characters, truncate and append `…`.
+
+**Brand prefixes** (do not substitute — these match the HUD palette):
+
+| Model | Emoji | Hex (HUD truecolor) |
+|---|---|---|
+| Claude | 🟠 | `#D97757` |
+| Gemini | 🔵 | `#4285F4` |
+| OpenAI | 🟢 | `#10A37F` |
+
+**Render exactly:**
 
 ```markdown
 <details>
 <summary>숙의 과정</summary>
 
 ### 모델 기여
-- **Claude (Validator):** {key contribution}
-- **Gemini (Architect):** {key contribution}
-- **OpenAI (Explorer):** {key contribution}
+- 🟠 **Claude (Validator):** {claude_primary_claim}
+- 🔵 **Gemini (Architect):** {gemini_primary_claim}
+- 🟢 **OpenAI (Explorer):** {openai_primary_claim}
 
 ### 해결된 주요 쟁점
 1. {contention} -> {resolution}
 2. {contention} -> {resolution}
 
 ### 신뢰 점수
-- Claude: {score} ({rating})
-- Gemini: {score} ({rating})
-- OpenAI: {score} ({rating})
+- 🟠 Claude: {score} ({rating})
+- 🔵 Gemini: {score} ({rating})
+- 🟢 OpenAI: {score} ({rating})
 
 </details>
 ```
