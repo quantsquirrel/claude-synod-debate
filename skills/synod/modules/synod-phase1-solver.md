@@ -23,10 +23,63 @@
 - `${SESSION_DIR}/round-1-solver/parsed-signals.json`
 - Updated `status.json` with round 1 complete
 
+**Default CLI wiring:** `$GEMINI_CLI` resolves to `agy-cli` (Antigravity Gemini
+3.5 Flash family). `$OPENAI_CLI` resolves to `cliproxy-cli` (CLIProxyAPI on
+localhost:8317). Historical `--model`, `--thinking`, and `--reasoning` flags
+are still passed for compatibility; the wrappers normalize them to the current
+runtime defaults.
+
 **Cross-references:**
 - Called after Phase 0 (`synod-phase0-setup.md`)
 - Outputs consumed by Phase 2 (`synod-phase2-critic.md`)
 - Format validation failures trigger `synod-error-handling.md`
+
+---
+
+## Step 1.0: Deliberation Anonymization Setup (SYNOD_ANONYMIZE=1 only)
+
+> **Flag-gated — skip entirely when `SYNOD_ANONYMIZE` is unset or `"0"` (default).**
+> When the flag is off, all branding and labelling behaves exactly as in v3.6 — no change.
+
+When `SYNOD_ANONYMIZE=1`:
+
+```bash
+if [[ "${SYNOD_ANONYMIZE:-0}" == "1" ]]; then
+  # Build a real->alias map for the active roster so no phase sees which
+  # provider authored which claim (arXiv:2510.07517 — identity cues drive
+  # sycophantic premature consensus).
+  ANON_MAP=$(python3 -c "
+import sys; sys.path.insert(0,'${TOOLS_DIR}')
+import model_branding, json
+roster = ['claude', 'gemini', 'openai']
+print(json.dumps(model_branding.build_anon_map(roster)))
+")
+  # Export the map for use in Steps 1.1–1.5; Phase 4 imports it to deanonymize.
+  export SYNOD_ANON_MAP="$ANON_MAP"
+
+  # Derive aliases for template substitution below.
+  ALIAS_CLAUDE=$(echo "$ANON_MAP" | python3 -c "import json,sys; print(json.load(sys.stdin)['claude'])")
+  ALIAS_GEMINI=$(echo "$ANON_MAP" | python3 -c "import json,sys; print(json.load(sys.stdin)['gemini'])")
+  ALIAS_OPENAI=$(echo "$ANON_MAP" | python3 -c "import json,sys; print(json.load(sys.stdin)['openai'])")
+
+  echo "[Phase 1] Anonymization ON — aliases: claude=$ALIAS_CLAUDE gemini=$ALIAS_GEMINI openai=$ALIAS_OPENAI" >&2
+else
+  # Flag off: aliases equal real names so every subsequent reference is a no-op.
+  ALIAS_CLAUDE="Claude"
+  ALIAS_GEMINI="Gemini"
+  ALIAS_OPENAI="OpenAI"
+fi
+```
+
+**When anonymization is active**, replace every occurrence of real model names
+(Claude / Gemini / OpenAI) in the prompts written in Steps 1.1–1.3 and in the
+`HISTORY_CONTEXT` tables assembled for external models with the corresponding
+alias (`$ALIAS_CLAUDE`, `$ALIAS_GEMINI`, `$ALIAS_OPENAI`).  The solver
+personas (ARCHITECT, EXPLORER, VALIDATOR) are role labels, not provider names,
+so they may be kept as-is.
+
+The `SYNOD_ANON_MAP` export is consumed by Phases 2–4 to maintain the same
+alias substitution throughout the debate.
 
 ---
 
@@ -129,13 +182,47 @@ Generate your solution with the same XML format requirements.
 > `timeout: ${BASH_TIMEOUT_MS}` (milliseconds) on the Bash tool call.
 > Default Bash tool timeout (120s) is shorter than model execution time and will kill the process.
 
-**v2.1:** Load timeouts from config and emit progress events:
+**v2.1 / v3.3 / v3.5:** Load model overrides from Phase 0.5 (if set), then load
+tier-aware timeouts and emit progress events:
 
 ```bash
-# Load timeouts from config (v2.1, v3.3 tier-aware)
-MODEL_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts model 2>/dev/null || echo "180")
-OUTER_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts outer 2>/dev/null || echo "240")
-BASH_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts bash 2>/dev/null || echo "300")
+# --- v3.5: Consume SYNOD_MODEL_OVERRIDES from Phase 0.5 (evidence-first tier roster) ---
+# When Phase 0.5 ran, it exported SYNOD_MODEL_OVERRIDES as the JSON content of
+# phase0.5/tier.json. If set and non-empty, override per-model selections for
+# this run; otherwise fall back to the mode-based defaults already in scope.
+if [[ -n "${SYNOD_MODEL_OVERRIDES:-}" ]]; then
+  _TIER_GEMINI_MODEL=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d.get('gemini',{}).get('model',''))" 2>/dev/null || true)
+  _TIER_GEMINI_THINKING=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d.get('gemini',{}).get('thinking',''))" 2>/dev/null || true)
+  _TIER_OPENAI_MODEL=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d.get('openai',{}).get('model',''))" 2>/dev/null || true)
+  _TIER_OPENAI_REASONING=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d.get('openai',{}).get('reasoning',''))" 2>/dev/null || true)
+  _TIER_NAME=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d.get('tier',''))" 2>/dev/null || true)
+
+  [[ -n "$_TIER_GEMINI_MODEL"    ]] && GEMINI_MODEL="$_TIER_GEMINI_MODEL"
+  [[ -n "$_TIER_GEMINI_THINKING" ]] && GEMINI_THINKING="$_TIER_GEMINI_THINKING"
+  [[ -n "$_TIER_OPENAI_MODEL"    ]] && OPENAI_MODEL="$_TIER_OPENAI_MODEL"
+  [[ -n "$_TIER_OPENAI_REASONING" ]] && OPENAI_REASONING="$_TIER_OPENAI_REASONING"
+
+  echo "[Phase 1] SYNOD_MODEL_OVERRIDES applied: tier=${_TIER_NAME:-unknown}" >&2
+else
+  echo "[Phase 1] SYNOD_MODEL_OVERRIDES not set — using mode-based model defaults" >&2
+fi
+
+# --- v2.1 / v3.3: Load tier-aware timeouts, then emit phase start ---
+# TIER is sourced from meta.json (written by Phase 0 classifier) when available.
+# Falls back to 'standard' if not present, preserving v2.1 behavior.
+_META_TIER=$(python3 -c \
+  "import json,os; f='${SESSION_DIR}/meta.json'; \
+   d=json.load(open(f)) if os.path.exists(f) else {}; \
+   print(d.get('tier','standard'))" 2>/dev/null || echo "standard")
+
+MODEL_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts model --tier "$_META_TIER" 2>/dev/null || echo "180")
+OUTER_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts outer --tier "$_META_TIER" 2>/dev/null || echo "240")
+BASH_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts bash  --tier "$_META_TIER" 2>/dev/null || echo "300")
 BASH_TIMEOUT_MS=$((BASH_TIMEOUT * 1000))
 
 # Emit phase start
@@ -162,7 +249,7 @@ GEMINI_PID=$!
 # OpenAI execution with completion marker
 (
   synod_progress '{"event":"model_start","model":"openai"}'
-  run_cli "$OPENAI_CLI" --model {OPENAI_MODEL} {--reasoning REASONING if o3} --timeout ${MODEL_TIMEOUT:-180} \
+  run_cli "$OPENAI_CLI" --model {OPENAI_MODEL} {--reasoning REASONING if non-empty} --timeout ${MODEL_TIMEOUT:-180} \
     < "${TEMP_DIR}/openai-prompt.txt" \
     > "${TEMP_DIR}/openai-response.txt" 2>&1
   echo $? > "${TEMP_DIR}/openai-exit-code"
@@ -297,6 +384,50 @@ FALLBACK_JSON
 
 parse_response "${TEMP_DIR}/gemini-response.txt" "${SESSION_DIR}/round-1-solver/gemini-parsed.json"
 parse_response "${TEMP_DIR}/openai-response.txt" "${SESSION_DIR}/round-1-solver/openai-parsed.json"
+```
+
+## Step 1.5b: Promote Solver Responses to round-1-solver/
+
+Ensure the output directory exists, then write/copy each model's response as a
+`.md` file so the HALT gate (Step 1.7) and downstream phases can find them.
+Claude's own Validator response (generated inline in Step 1.2/1.3) must be
+written here; external-model responses are copied from TEMP_DIR only when the
+source file exists and is non-empty (a missing external model is a skipped/
+failed run — do not hard-fail here; the HALT gate handles the enforcement).
+
+```bash
+# Ensure output directory exists
+mkdir -p "${SESSION_DIR}/round-1-solver"
+
+# --- Claude (Validator) ---
+# Write the Validator solution produced in Step 1.2/1.3 to claude-response.md.
+# CLAUDE_SOLVER_RESPONSE must hold the raw text Claude generated above.
+# If the variable is unset (shouldn't happen), write a placeholder so the
+# HALT gate can flag it rather than silently skipping.
+if [[ -n "${CLAUDE_SOLVER_RESPONSE:-}" ]]; then
+  printf '%s\n' "$CLAUDE_SOLVER_RESPONSE" > "${SESSION_DIR}/round-1-solver/claude-response.md"
+else
+  echo "[Warning] CLAUDE_SOLVER_RESPONSE is unset — writing empty placeholder" >&2
+  : > "${SESSION_DIR}/round-1-solver/claude-response.md"
+fi
+
+# Parse Claude's response into claude-parsed.json
+parse_response "${SESSION_DIR}/round-1-solver/claude-response.md" \
+               "${SESSION_DIR}/round-1-solver/claude-parsed.json"
+
+# --- Gemini (Architect) ---
+if [[ -s "${TEMP_DIR}/gemini-response.txt" ]]; then
+  cp "${TEMP_DIR}/gemini-response.txt" "${SESSION_DIR}/round-1-solver/gemini-response.md"
+else
+  echo "[Warning] ${TEMP_DIR}/gemini-response.txt missing or empty — skipping gemini-response.md" >&2
+fi
+
+# --- OpenAI (Explorer) ---
+if [[ -s "${TEMP_DIR}/openai-response.txt" ]]; then
+  cp "${TEMP_DIR}/openai-response.txt" "${SESSION_DIR}/round-1-solver/openai-response.md"
+else
+  echo "[Warning] ${TEMP_DIR}/openai-response.txt missing or empty — skipping openai-response.md" >&2
+fi
 ```
 
 ## Step 1.5: Save Round State
