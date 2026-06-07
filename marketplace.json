@@ -76,14 +76,26 @@
   "externalDependencies": {
     "apis": [
       {
-        "name": "Google Gemini API",
+        "name": "Antigravity CLI (agy-cli)",
         "required": true,
-        "envVar": "GEMINI_API_KEY"
+        "note": "Primary Gemini access path. Authenticate via `agy` CLI; no separate env key required."
+      },
+      {
+        "name": "CLIProxyAPI (cliproxy-cli)",
+        "required": true,
+        "note": "Primary OpenAI access path. Run locally on port 8317; CLIPROXY_API_KEY is optional when using Synod's default local key."
+      },
+      {
+        "name": "Google Gemini API",
+        "required": false,
+        "envVar": "GEMINI_API_KEY",
+        "note": "Legacy fallback only (gemini-3.py). Not needed when using agy-cli."
       },
       {
         "name": "OpenAI API",
-        "required": true,
-        "envVar": "OPENAI_API_KEY"
+        "required": false,
+        "envVar": "OPENAI_API_KEY",
+        "note": "Legacy fallback only (openai-cli.py). Not needed when using cliproxy-cli."
       }
     ]
   },
