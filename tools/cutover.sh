@@ -19,7 +19,13 @@
 # pick exit vs return accordingly.
 if (return 0 2>/dev/null); then SOURCED=1; else SOURCED=0; fi
 if [ "$SOURCED" = "0" ]; then set -euo pipefail; fi
-_die() { echo "$1" >&2; if [ "$SOURCED" = "1" ]; then return "$2"; else exit "$2"; fi; }
+
+# Halt idiom — MUST be inlined at top-level script scope, never wrapped in a
+# function: `return` halts a sourced script only when executed at the script's
+# own level; inside a function it would just return from the function and let
+# the script run on (the original sourced-mode bug). In an executed script
+# `return` errors at top level, so `|| exit N` is the fallback.
+#   halt:  return N 2>/dev/null || exit N
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="${PYTHON:-python3}"
@@ -30,8 +36,8 @@ for arg in "$@"; do
   case "$arg" in
     --apply) APPLY=1 ;;
     --require-keys) REQUIRE_KEYS=1 ;;
-    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; _die "" 0 ;;
-    *) _die "unknown arg: $arg" 2 ;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; return 0 2>/dev/null || exit 0 ;;
+    *) echo "unknown arg: $arg" >&2; return 2 2>/dev/null || exit 2 ;;
   esac
 done
 
@@ -41,8 +47,8 @@ echo "== Synod cutover: bridge → direct =="
 CHECK_ARGS=""
 [ "$REQUIRE_KEYS" = "1" ] && CHECK_ARGS="--require-keys"
 if ! "$PY" "$SCRIPT_DIR/cutover_check.py" $CHECK_ARGS; then
-  _die "✗ readiness check failed — resolve gaps above before cutover." 1
-  if [ "$SOURCED" = "1" ]; then return 1; fi
+  echo "✗ readiness check failed — resolve gaps above before cutover." >&2
+  return 1 2>/dev/null || exit 1
 fi
 
 # 2) Live API-key preflight (advisory unless --require-keys already enforced it).

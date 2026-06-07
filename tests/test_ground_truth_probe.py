@@ -1,11 +1,7 @@
 """Tests for tools/ground_truth_probe.py — v3.5 evidence-first critical-path code."""
 
 import importlib.util
-import json
-import sys
 from pathlib import Path
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Module import (module lives in tools/ with no __init__.py package structure)
@@ -31,7 +27,7 @@ run_version_pins = _probe.run_version_pins
 
 class TestDetectLang:
     def test_python_pyproject(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"foo\"\n")
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "foo"\n')
         assert detect_lang(tmp_path) == "python"
 
     def test_python_setup_py(self, tmp_path):
@@ -47,7 +43,7 @@ class TestDetectLang:
         assert detect_lang(tmp_path) == "go"
 
     def test_rust_cargo_toml(self, tmp_path):
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"hello\"\n")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "hello"\n')
         assert detect_lang(tmp_path) == "rust"
 
     def test_unknown_empty_dir(self, tmp_path):
@@ -55,7 +51,7 @@ class TestDetectLang:
 
     def test_python_takes_priority_over_node_when_both(self, tmp_path):
         # pyproject.toml checked first in the function
-        (tmp_path / "pyproject.toml").write_text("[project]\nname = \"foo\"\n")
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "foo"\n')
         (tmp_path / "package.json").write_text('{"name": "foo"}')
         assert detect_lang(tmp_path) == "python"
 
@@ -260,9 +256,7 @@ class TestComputeStatus:
 
 class TestRunVersionPins:
     def test_ok_when_versions_match_exactly(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nname = "foo"\nversion = "1.2.3"\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "foo"\nversion = "1.2.3"\n')
         (tmp_path / "CHANGELOG.md").write_text("# [1.2.3] - 2024-01-01\n\n- initial\n")
         result = run_version_pins(tmp_path, {"version": "1.2.3"})
         assert result["consistency"] == "ok"

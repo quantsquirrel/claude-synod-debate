@@ -23,9 +23,6 @@ Hex sources (verified 2026-05):
 
 from __future__ import annotations
 
-import re
-from typing import Dict, List
-
 BRANDING: dict[str, dict[str, str]] = {
     "claude": {
         "label": "Claude",
@@ -128,7 +125,7 @@ def anonymize_label(model: str) -> str:
     return _ALIAS_PREFIX + "1"
 
 
-def build_anon_map(models: List[str]) -> Dict[str, str]:
+def build_anon_map(models: list[str]) -> dict[str, str]:
     """Return a stable real->alias mapping for the given model roster.
 
     Rules
@@ -155,7 +152,7 @@ def build_anon_map(models: List[str]) -> Dict[str, str]:
         # -> {"claude": "Agent-1", "gemini": "Agent-2", "openai": "Agent-3"}
     """
     # Deduplicate while preserving a canonical (lowercased) key for sorting.
-    seen: Dict[str, str] = {}  # lower -> first-seen original
+    seen: dict[str, str] = {}  # lower -> first-seen original
     for m in models:
         lower = m.lower()
         if lower not in seen:
@@ -164,7 +161,7 @@ def build_anon_map(models: List[str]) -> Dict[str, str]:
     # Sort by lowercased key to get a deterministic, order-independent result.
     sorted_lowers = sorted(seen.keys())
 
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     for idx, lower in enumerate(sorted_lowers, start=1):
         original = seen[lower]
         result[original] = _ALIAS_PREFIX + str(idx)
@@ -172,7 +169,7 @@ def build_anon_map(models: List[str]) -> Dict[str, str]:
     return result
 
 
-def deanonymize(text: str, anon_map: Dict[str, str]) -> str:
+def deanonymize(text: str, anon_map: dict[str, str]) -> str:
     """Replace neutral aliases in *text* with their real model names.
 
     This is the inverse of ``build_anon_map``.  It is called in Phase 4
@@ -192,7 +189,7 @@ def deanonymize(text: str, anon_map: Dict[str, str]) -> str:
     Aliases that do not appear in the text are silently ignored.
     """
     # Build the reverse map: alias -> real.
-    reverse: Dict[str, str] = {alias: real for real, alias in anon_map.items()}
+    reverse: dict[str, str] = {alias: real for real, alias in anon_map.items()}
 
     result = text
     # Sort by alias length descending so longer tokens match before shorter

@@ -186,30 +186,43 @@ Generate your solution with the same XML format requirements.
 tier-aware timeouts and emit progress events:
 
 ```bash
-# --- v3.5: Consume SYNOD_MODEL_OVERRIDES from Phase 0.5 (evidence-first tier roster) ---
-# When Phase 0.5 ran, it exported SYNOD_MODEL_OVERRIDES as the JSON content of
-# phase0.5/tier.json. If set and non-empty, override per-model selections for
-# this run; otherwise fall back to the mode-based defaults already in scope.
+# --- v3.6.2: Consume SYNOD_MODEL_OVERRIDES from Phase 0.5 (evidence-first tier roster) ---
+# tier_matrix.py emits {tier, backend, models:[{provider,cli,model,thinking|reasoning}]}.
+# The roster is ALREADY backend-resolved by provider_backend (bridge identity, or
+# direct with cli/model rewritten e.g. 3.5-flash->flash-latest), so model/thinking/
+# reasoning here are runtime-ready and need no further translation.
+_ov() { echo "$SYNOD_MODEL_OVERRIDES" | python3 -c "$1" 2>/dev/null || true; }
 if [[ -n "${SYNOD_MODEL_OVERRIDES:-}" ]]; then
-  _TIER_GEMINI_MODEL=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d.get('gemini',{}).get('model',''))" 2>/dev/null || true)
-  _TIER_GEMINI_THINKING=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d.get('gemini',{}).get('thinking',''))" 2>/dev/null || true)
-  _TIER_OPENAI_MODEL=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d.get('openai',{}).get('model',''))" 2>/dev/null || true)
-  _TIER_OPENAI_REASONING=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d.get('openai',{}).get('reasoning',''))" 2>/dev/null || true)
-  _TIER_NAME=$(echo "$SYNOD_MODEL_OVERRIDES" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d.get('tier',''))" 2>/dev/null || true)
+  _G="import json,sys;by={m.get('provider'):m for m in json.load(sys.stdin).get('models',[])};print(by.get('gemini',{}).get"
+  _O="import json,sys;by={m.get('provider'):m for m in json.load(sys.stdin).get('models',[])};print(by.get('openai',{}).get"
+  _TIER_NAME=$(_ov "import json,sys;print(json.load(sys.stdin).get('tier',''))")
+  _TIER_BACKEND=$(_ov "import json,sys;print(json.load(sys.stdin).get('backend',''))")
+  _TIER_GEMINI_MODEL=$(_ov "${_G}('model',''))")
+  _TIER_GEMINI_THINKING=$(_ov "${_G}('thinking',''))")
+  _TIER_OPENAI_MODEL=$(_ov "${_O}('model',''))")
+  _TIER_OPENAI_REASONING=$(_ov "${_O}('reasoning',''))")
 
   [[ -n "$_TIER_GEMINI_MODEL"    ]] && GEMINI_MODEL="$_TIER_GEMINI_MODEL"
   [[ -n "$_TIER_GEMINI_THINKING" ]] && GEMINI_THINKING="$_TIER_GEMINI_THINKING"
   [[ -n "$_TIER_OPENAI_MODEL"    ]] && OPENAI_MODEL="$_TIER_OPENAI_MODEL"
   [[ -n "$_TIER_OPENAI_REASONING" ]] && OPENAI_REASONING="$_TIER_OPENAI_REASONING"
 
-  echo "[Phase 1] SYNOD_MODEL_OVERRIDES applied: tier=${_TIER_NAME:-unknown}" >&2
+  echo "[Phase 1] SYNOD_MODEL_OVERRIDES applied: tier=${_TIER_NAME:-unknown} backend=${_TIER_BACKEND:-bridge}" >&2
 else
-  echo "[Phase 1] SYNOD_MODEL_OVERRIDES not set — using mode-based model defaults" >&2
+  # No tier roster (default /synod path). When the direct backend is active, the
+  # mode-default model strings are bridge vocabulary (e.g. 3.5-flash, gpt55fast)
+  # that the direct CLIs (gemini-3/openai-cli) cannot parse -- translate them to
+  # direct model keys. Bridge backend leaves them unchanged.
+  if [[ "${SYNOD_PROVIDER_BACKEND:-bridge}" == "direct" ]]; then
+    _PB="${PLUGIN_ROOT}/tools/provider_backend.py"
+    _G2=$(python3 "$_PB" --backend direct --provider gemini --translate-model "$GEMINI_MODEL" 2>/dev/null || true)
+    _O2=$(python3 "$_PB" --backend direct --provider openai --translate-model "$OPENAI_MODEL" 2>/dev/null || true)
+    [[ -n "$_G2" ]] && GEMINI_MODEL="$_G2"
+    [[ -n "$_O2" ]] && OPENAI_MODEL="$_O2"
+    echo "[Phase 1] direct backend -- translated models: gemini=$GEMINI_MODEL openai=$OPENAI_MODEL" >&2
+  else
+    echo "[Phase 1] SYNOD_MODEL_OVERRIDES not set -- using mode-based model defaults" >&2
+  fi
 fi
 
 # --- v2.1 / v3.3: Load tier-aware timeouts, then emit phase start ---

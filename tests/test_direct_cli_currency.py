@@ -63,19 +63,27 @@ OPENAI_CHOICES = _argparse_model_choices(OPENAI_AST)
 
 
 class TestDirectModelTargetsExist:
-    @pytest.mark.parametrize("target", sorted(set(provider_backend.DIRECT_MODEL["gemini"].values())))
+    @pytest.mark.parametrize(
+        "target", sorted(set(provider_backend.DIRECT_MODEL["gemini"].values()))
+    )
     def test_gemini_target_in_model_map(self, target):
         assert target in GEMINI_MAP, f"gemini direct target '{target}' missing from MODEL_MAP"
 
-    @pytest.mark.parametrize("target", sorted(set(provider_backend.DIRECT_MODEL["gemini"].values())))
+    @pytest.mark.parametrize(
+        "target", sorted(set(provider_backend.DIRECT_MODEL["gemini"].values()))
+    )
     def test_gemini_target_is_argparse_choice(self, target):
         assert target in GEMINI_CHOICES, f"gemini '{target}' not an accepted --model choice"
 
-    @pytest.mark.parametrize("target", sorted(set(provider_backend.DIRECT_MODEL["openai"].values())))
+    @pytest.mark.parametrize(
+        "target", sorted(set(provider_backend.DIRECT_MODEL["openai"].values()))
+    )
     def test_openai_target_in_model_map(self, target):
         assert target in OPENAI_MAP, f"openai direct target '{target}' missing from MODEL_MAP"
 
-    @pytest.mark.parametrize("target", sorted(set(provider_backend.DIRECT_MODEL["openai"].values())))
+    @pytest.mark.parametrize(
+        "target", sorted(set(provider_backend.DIRECT_MODEL["openai"].values()))
+    )
     def test_openai_target_is_argparse_choice(self, target):
         assert target in OPENAI_CHOICES, f"openai '{target}' not an accepted --model choice"
 

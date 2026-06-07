@@ -25,7 +25,7 @@ import json
 import math
 import re
 import sys
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 
 def validate_format(text: str) -> dict[str, bool]:
@@ -226,7 +226,7 @@ def weighted_consensus(model_scores: list[dict]) -> dict:
 
 
 def prune_debate_edges(
-    trust_scores: List[dict],
+    trust_scores: list[dict],
     keep_above_mean: bool = True,
     floor: Optional[float] = None,
 ) -> dict:
@@ -285,7 +285,7 @@ def prune_debate_edges(
 # ---------------------------------------------------------------------------
 
 
-def temperature_scale(scores: List[float], T: float) -> List[float]:
+def temperature_scale(scores: list[float], T: float) -> list[float]:
     """Apply logit temperature scaling to a list of 0-100 SID confidence scores.
 
     Converts each score s to a probability p = s/100, applies logit
@@ -316,7 +316,7 @@ def temperature_scale(scores: List[float], T: float) -> List[float]:
     return result
 
 
-def platt_scale(scores: List[float], a: float, b: float) -> List[float]:
+def platt_scale(scores: list[float], a: float, b: float) -> list[float]:
     """Apply Platt scaling (logistic regression calibration) to 0-100 scores.
 
     Maps each score s via sigmoid(a * s/100 + b) then back to 0-100.
@@ -339,8 +339,8 @@ def platt_scale(scores: List[float], a: float, b: float) -> List[float]:
 
 
 def compute_ece(
-    pred_probs: List[float],
-    correct: List[bool],
+    pred_probs: list[float],
+    correct: list[bool],
     n_bins: int = 10,
 ) -> float:
     """Compute Expected Calibration Error (ECE).
@@ -382,7 +382,7 @@ def compute_ece(
     return round(ece, 6)
 
 
-def compute_brier(pred_probs: List[float], correct: List[bool]) -> float:
+def compute_brier(pred_probs: list[float], correct: list[bool]) -> float:
     """Compute the Brier score (mean squared error of probability forecasts).
 
     Args:
@@ -410,7 +410,7 @@ def compute_brier(pred_probs: List[float], correct: List[bool]) -> float:
 # ---------------------------------------------------------------------------
 
 
-def semantic_entropy(answer_clusters: List[int]) -> float:
+def semantic_entropy(answer_clusters: list[int]) -> float:
     """Compute entropy over cluster-id assignments of N sampled answers.
 
     High entropy indicates the model generates semantically diverse answers
@@ -443,7 +443,7 @@ def semantic_entropy(answer_clusters: List[int]) -> float:
     return round(entropy, 6)
 
 
-def cluster_by_lexical(answers: List[str], threshold: float = 0.6) -> List[int]:
+def cluster_by_lexical(answers: list[str], threshold: float = 0.6) -> list[int]:
     """Greedily cluster answers by Jaccard token overlap (logit-free proxy).
 
     Assigns each answer to the first existing cluster whose representative
@@ -469,9 +469,9 @@ def cluster_by_lexical(answers: List[str], threshold: float = 0.6) -> List[int]:
         union = len(tokens_a | tokens_b)
         return intersection / union
 
-    cluster_ids: List[int] = []
+    cluster_ids: list[int] = []
     # Representatives: one answer string per cluster
-    representatives: List[str] = []
+    representatives: list[str] = []
 
     for answer in answers:
         assigned = -1
@@ -636,8 +636,8 @@ def main():
 
     # ECE mode
     if args.ece:
-        probs: List[float] = []
-        labels: List[bool] = []
+        probs: list[float] = []
+        labels: list[bool] = []
         for entry in args.ece:
             parts = entry.split(":")
             if len(parts) == 2:

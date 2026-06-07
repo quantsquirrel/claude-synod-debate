@@ -363,8 +363,8 @@ class TestSemanticEntropy:
 
     def test_entropy_increases_with_diversity(self):
         # More distinct clusters → higher entropy
-        h_low = semantic_entropy([0, 0, 0, 1])      # mostly one cluster
-        h_high = semantic_entropy([0, 1, 2, 3])      # all distinct
+        h_low = semantic_entropy([0, 0, 0, 1])  # mostly one cluster
+        h_high = semantic_entropy([0, 1, 2, 3])  # all distinct
         assert h_low < h_high
 
     def test_single_sample(self):

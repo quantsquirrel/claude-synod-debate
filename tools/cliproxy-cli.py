@@ -39,7 +39,6 @@ from base_provider import (  # noqa: E402
     BaseProvider,
     build_cached_messages,
     build_single_turn_messages,
-    is_prompt_cache_enabled,
     load_synod_env,
     resolve_api_key,
 )
@@ -112,7 +111,10 @@ class ClipProxyProvider(BaseProvider):
         key = key or _load_config_api_key()
         if key:
             return key.strip()
-        print("Error: CLIPROXY_API_KEY not found and ~/CLIProxyAPI/config.yaml has no api-keys entry.", file=sys.stderr)
+        print(
+            "Error: CLIPROXY_API_KEY not found and ~/CLIProxyAPI/config.yaml has no api-keys entry.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     def create_client(self, timeout_ms: int):
@@ -139,7 +141,13 @@ class ClipProxyProvider(BaseProvider):
           2. prompt         — small, per-round dynamic instruction / user turn
         """
         stable_prefix = kwargs.get("stable_prefix", "")
-        if stable_prefix and is_prompt_cache_enabled():
+        if stable_prefix:
+            # build_cached_messages keeps the stable prefix in ALL cases — it
+            # only adds the cache_control marker when SYNOD_PROMPT_CACHE=1, and
+            # emits the same prefix as a plain system message when caching is
+            # disabled. Gating on is_prompt_cache_enabled() here previously
+            # dropped the prefix entirely under SYNOD_PROMPT_CACHE=0, violating
+            # the base_provider contract ("identical content, minus the marker").
             messages = build_cached_messages(stable_prefix, prompt)
         else:
             messages = build_single_turn_messages(prompt)

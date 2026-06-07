@@ -147,6 +147,122 @@ class TestResolveEntryGuards:
 
 
 # ---------------------------------------------------------------------------
+# translate_model / direct_cli_for — runtime helpers for SKILL.md / phase1
+# ---------------------------------------------------------------------------
+
+
+class TestTranslateModel:
+    def test_bridge_identity(self):
+        assert provider_backend.translate_model("gemini", "3.5-flash", BRIDGE) == "3.5-flash"
+        assert provider_backend.translate_model("openai", "gpt55fast", BRIDGE) == "gpt55fast"
+
+    def test_direct_gemini(self):
+        assert provider_backend.translate_model("gemini", "3.5-flash", DIRECT) == "flash-latest"
+
+    def test_direct_openai(self):
+        assert provider_backend.translate_model("openai", "gpt55fast", DIRECT) == "gpt55"
+        assert provider_backend.translate_model("openai", "gpt54mini", DIRECT) == "gpt54mini"
+
+    def test_direct_unmapped_raises(self):
+        with pytest.raises(BackendResolutionError):
+            provider_backend.translate_model("openai", "ghost", DIRECT)
+
+    def test_unsupported_backend_raises(self):
+        with pytest.raises(BackendResolutionError):
+            provider_backend.translate_model("gemini", "3.5-flash", "quantum")
+
+
+class TestDirectCliFor:
+    def test_known_providers(self):
+        assert provider_backend.direct_cli_for("gemini") == "gemini-3"
+        assert provider_backend.direct_cli_for("openai") == "openai-cli"
+
+    def test_unknown_raises(self):
+        with pytest.raises(BackendResolutionError):
+            provider_backend.direct_cli_for("anthropic")
+
+
+class TestTranslateCLI:
+    def _run(self, argv, capsys, monkeypatch):
+        import sys
+
+        monkeypatch.setattr(sys, "argv", ["provider_backend.py"] + argv)
+        provider_backend.main()
+        return capsys.readouterr().out.strip()
+
+    def test_translate_model_direct(self, capsys, monkeypatch):
+        out = self._run(
+            ["--backend", "direct", "--provider", "gemini", "--translate-model", "3.5-flash"],
+            capsys,
+            monkeypatch,
+        )
+        assert out == "flash-latest"
+
+    def test_translate_model_bridge_identity(self, capsys, monkeypatch):
+        out = self._run(
+            ["--backend", "bridge", "--provider", "openai", "--translate-model", "gpt55fast"],
+            capsys,
+            monkeypatch,
+        )
+        assert out == "gpt55fast"
+
+    def test_print_cli_direct(self, capsys, monkeypatch):
+        out = self._run(
+            ["--backend", "direct", "--provider", "openai", "--print-cli"], capsys, monkeypatch
+        )
+        assert out == "openai-cli"
+
+    def test_translate_without_provider_exits_2(self, capsys, monkeypatch):
+        import sys
+
+        monkeypatch.setattr(sys, "argv", ["provider_backend.py", "--translate-model", "3.5-flash"])
+        with pytest.raises(SystemExit) as exc:
+            provider_backend.main()
+        assert exc.value.code == 2
+
+    def test_translate_unmapped_exits_2(self, capsys, monkeypatch):
+        import sys
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "provider_backend.py",
+                "--backend",
+                "direct",
+                "--provider",
+                "openai",
+                "--translate-model",
+                "ghost",
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            provider_backend.main()
+        assert exc.value.code == 2
+
+
+class TestPhase1RosterShape:
+    """The /synod phase1 reader extracts model/thinking/reasoning per-provider
+    from tier_matrix's models[] roster. This asserts that contract holds for the
+    real matrix under the direct backend (the cutover-critical path)."""
+
+    def _by_provider(self, roster):
+        return {m["provider"]: m for m in roster}
+
+    def test_direct_roster_is_phase1_consumable(self):
+        path = Path(__file__).parent.parent / "config" / "model_matrix.json"
+        matrix = json.loads(path.read_text())
+        for tier, roster in matrix["tiers"].items():
+            resolved = resolve_roster(roster, DIRECT)
+            by = self._by_provider(resolved)
+            assert by["gemini"]["model"] == "flash-latest", tier
+            assert by["gemini"]["cli"] == "gemini-3", tier
+            assert by["openai"]["cli"] == "openai-cli", tier
+            # openai model must be a direct key (gpt55 / gpt54mini)
+            assert by["openai"]["model"] in ("gpt55", "gpt54mini"), tier
+
+
+# ---------------------------------------------------------------------------
 # main() CLI — stdin roster + flags + exit codes
 # ---------------------------------------------------------------------------
 
@@ -186,9 +302,7 @@ class TestMainCLI:
 
     def test_unreadable_roster_exits_2(self, tmp_path, capsys, monkeypatch):
         with pytest.raises(SystemExit) as exc:
-            self._run(
-                ["--roster-json", str(tmp_path / "missing.json")], capsys, monkeypatch
-            )
+            self._run(["--roster-json", str(tmp_path / "missing.json")], capsys, monkeypatch)
         assert exc.value.code == 2
 
     def test_unmappable_direct_roster_exits_2(self, capsys, monkeypatch):

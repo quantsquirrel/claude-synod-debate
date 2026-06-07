@@ -235,7 +235,7 @@ def main():
         "--tier",
         default=None,
         help="Optional tier name (fast, standard, deep). When the path starts with "
-             "'timeouts', routes through get_timeouts(tier) for tier-aware values.",
+        "'timeouts', routes through get_timeouts(tier) for tier-aware values.",
     )
     args = parser.parse_args()
 

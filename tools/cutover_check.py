@@ -122,11 +122,11 @@ def run_checks(matrix_path: Path, backend: str, require_keys: bool) -> dict:
         try:
             resolved = provider_backend.resolve_roster(roster, backend)
         except provider_backend.BackendResolutionError as exc:
-            checks.append(
-                {"check": f"resolve:{tier}", "ok": False, "detail": str(exc)}
-            )
+            checks.append({"check": f"resolve:{tier}", "ok": False, "detail": str(exc)})
             continue
-        checks.append({"check": f"resolve:{tier}", "ok": True, "detail": f"{len(resolved)} entries"})
+        checks.append(
+            {"check": f"resolve:{tier}", "ok": True, "detail": f"{len(resolved)} entries"}
+        )
 
         if backend != provider_backend.DIRECT:
             continue  # model-map validity only meaningful for the direct target
@@ -151,9 +151,7 @@ def run_checks(matrix_path: Path, backend: str, require_keys: bool) -> dict:
                 detail = f"'{model}' not in {provider} MODEL_MAP"
             elif not in_choices:
                 detail = f"'{model}' not an accepted --model choice"
-            checks.append(
-                {"check": f"model:{tier}:{provider}:{model}", "ok": ok, "detail": detail}
-            )
+            checks.append({"check": f"model:{tier}:{provider}:{model}", "ok": ok, "detail": detail})
 
     # API-key preflight (structural-independent).
     for provider, envs in PROVIDER_KEY_ENVS.items():
@@ -163,9 +161,7 @@ def run_checks(matrix_path: Path, backend: str, require_keys: bool) -> dict:
                 "check": f"api_key:{provider}",
                 "ok": present if require_keys else True,
                 "detail": (
-                    f"set ({'/'.join(envs)})"
-                    if present
-                    else f"MISSING ({' or '.join(envs)})"
+                    f"set ({'/'.join(envs)})" if present else f"MISSING ({' or '.join(envs)})"
                 ),
                 "advisory": (not present) and (not require_keys),
             }

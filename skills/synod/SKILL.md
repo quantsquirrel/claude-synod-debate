@@ -111,16 +111,29 @@ ELSE:
 
     LEGACY_GEMINI_CLI=$(resolve_cli "gemini-3" || true)
     LEGACY_OPENAI_CLI=$(resolve_cli "openai-cli" || true)
-    GEMINI_CLI=$(resolve_cli "agy-cli" || resolve_cli "gemini-3")
-    OPENAI_CLI=$(resolve_cli "cliproxy-cli" || resolve_cli "openai-cli")
-    SYNOD_PARSER_CLI=$(resolve_cli "synod-parser")
 
-    if [[ "$GEMINI_CLI" == *"gemini-3"* ]]; then
-        echo "[Synod] agy-cli unavailable; using legacy Gemini fallback (may fail if retired service/deps unavailable)" >&2
+    # Backend selection (v3.6.2). SYNOD_PROVIDER_BACKEND controls which CLI lane
+    # is preferred:
+    #   bridge (default) — agy-cli/cliproxy-cli first, direct CLIs as fallback.
+    #   direct           — gemini-3/openai-cli FIRST (durable, post-cutover lane).
+    # The matching model translation happens in Phase 1 (provider_backend.py):
+    # direct rewrites the mode-default bridge model strings (3.5-flash, gpt55fast)
+    # to direct keys (flash-latest, gpt55). Keep this in sync with that step.
+    if [[ "${SYNOD_PROVIDER_BACKEND:-bridge}" == "direct" ]]; then
+        GEMINI_CLI=$(resolve_cli "gemini-3")
+        OPENAI_CLI=$(resolve_cli "openai-cli")
+        echo "[Synod] SYNOD_PROVIDER_BACKEND=direct — using gemini-3/openai-cli (vendor APIs)" >&2
+    else
+        GEMINI_CLI=$(resolve_cli "agy-cli" || resolve_cli "gemini-3")
+        OPENAI_CLI=$(resolve_cli "cliproxy-cli" || resolve_cli "openai-cli")
+        if [[ "$GEMINI_CLI" == *"gemini-3"* ]]; then
+            echo "[Synod] agy-cli unavailable; using legacy Gemini fallback (may fail if retired service/deps unavailable)" >&2
+        fi
+        if [[ "$OPENAI_CLI" == *"openai-cli"* ]]; then
+            echo "[Synod] cliproxy-cli unavailable; using legacy OpenAI fallback" >&2
+        fi
     fi
-    if [[ "$OPENAI_CLI" == *"openai-cli"* ]]; then
-        echo "[Synod] cliproxy-cli unavailable; using legacy OpenAI fallback" >&2
-    fi
+    SYNOD_PARSER_CLI=$(resolve_cli "synod-parser")
 
     if [[ "${SYNOD_V2_AUTO_CLASSIFY:-1}" == "1" ]]; then
         CLASSIFY_RESULT=$(python3 "${TOOLS_DIR}/synod-classifier.py" "$PROBLEM" 2>/dev/null)

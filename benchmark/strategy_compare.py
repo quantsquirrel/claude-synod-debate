@@ -38,6 +38,7 @@ This module only validates harness correctness via MockRunner.
 See benchmark/README_strategy_compare.md for instructions on
 running the live harness.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,7 +51,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Locate project root / tools import
@@ -86,7 +87,7 @@ class SolverSignal:
     answer: str  # extracted numeric string
     confidence: float  # 0-100
     can_exit: bool
-    semantic_focus: List[str]
+    semantic_focus: list[str]
     trust_score: float = 1.0
 
 
@@ -96,12 +97,12 @@ class QuestionResult:
 
     question_id: int
     expected: str
-    predicted: Optional[str]
+    predicted: str | None
     is_correct: bool
     model_calls: int  # total provider calls made
     wall_seconds: float
     token_estimate: int  # proxy token count
-    gate_decision: Optional[str] = None  # 'skip_debate' | 'run_debate' | None
+    gate_decision: str | None = None  # 'skip_debate' | 'run_debate' | None
     strategy: str = ""
 
 
@@ -118,7 +119,7 @@ class StrategyReport:
     total_wall_seconds: float
     total_token_estimate: int
     estimated_cost_usd: float
-    per_question_results: List[Dict[str, Any]] = field(default_factory=list)
+    per_question_results: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -127,15 +128,15 @@ class StrategyReport:
 
 # Tokens per call tier (rough proxy — not real measurements).
 # Adjust via SYNOD_BENCH_TOKENS_STRONG / _SOLVER / _DEBATE env vars.
-_DEFAULT_TOKENS_STRONG = 1_500   # single strong solver call
-_DEFAULT_TOKENS_SOLVER = 800     # one Phase-1 solver call (fast/medium)
-_DEFAULT_TOKENS_DEBATE = 3_000   # one full debate-phase call
+_DEFAULT_TOKENS_STRONG = 1_500  # single strong solver call
+_DEFAULT_TOKENS_SOLVER = 800  # one Phase-1 solver call (fast/medium)
+_DEFAULT_TOKENS_DEBATE = 3_000  # one full debate-phase call
 
 # Cost per token in USD (blended fast-tier estimate: ~$1/M input, ~$3/M output)
 _COST_PER_TOKEN = 2e-6  # $2 per 1M tokens blended
 
 
-def _token_cfg() -> Dict[str, int]:
+def _token_cfg() -> dict[str, int]:
     def _e(name: str, default: int) -> int:
         try:
             return int(os.environ.get(name, default))
@@ -154,7 +155,7 @@ def _token_cfg() -> Dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-def _extract_numeric(text: str) -> Optional[str]:
+def _extract_numeric(text: str) -> str | None:
     """Extract a numeric answer from free-form text."""
     patterns = [
         r"####\s*(-?\d+(?:,\d+)*(?:\.\d+)?)",
@@ -170,7 +171,7 @@ def _extract_numeric(text: str) -> Optional[str]:
     return nums[-1] if nums else None
 
 
-def _answers_match(expected: str, predicted: Optional[str]) -> bool:
+def _answers_match(expected: str, predicted: str | None) -> bool:
     """Numeric-tolerant exact match (mirrors evaluator.GSM8KEvaluator.is_correct)."""
     if predicted is None:
         return False
@@ -195,9 +196,7 @@ class Runner(ABC):
     # ---------- Phase-1 solvers ----------
 
     @abstractmethod
-    def phase1_solve(
-        self, prompt: str, question_id: int
-    ) -> List[SolverSignal]:
+    def phase1_solve(self, prompt: str, question_id: int) -> list[SolverSignal]:
         """
         Run Phase-1 solvers.  Returns one SolverSignal per model.
         For S1 this is called with n_models=1.
@@ -215,12 +214,12 @@ class Runner(ABC):
 
     # ---------- Weighted vote (S2 skip path) ----------
 
-    def vote(self, signals: List[SolverSignal]) -> str:
+    def vote(self, signals: list[SolverSignal]) -> str:
         """
         Default: pick the answer with the highest weighted-confidence sum.
         Override for custom consensus logic.
         """
-        scores: Dict[str, float] = {}
+        scores: dict[str, float] = {}
         for s in signals:
             key = s.answer or ""
             scores[key] = scores.get(key, 0.0) + s.confidence * s.trust_score
@@ -257,18 +256,16 @@ class MockRunner(Runner):
 
     def __init__(
         self,
-        answers: Dict[int, str],
-        agreement_ids: Optional[List[int]] = None,
+        answers: dict[int, str],
+        agreement_ids: list[int] | None = None,
     ) -> None:
         self.answers = answers
         self.agreement_ids: set = set(agreement_ids or [])
-        self.call_log: List[str] = []
+        self.call_log: list[str] = []
 
     # --- Phase-1 ---
 
-    def phase1_solve(
-        self, prompt: str, question_id: int
-    ) -> List[SolverSignal]:
+    def phase1_solve(self, prompt: str, question_id: int) -> list[SolverSignal]:
         self.call_log.append(f"phase1:{question_id}")
         correct_answer = self.answers.get(question_id, "999999")
         is_agree = question_id in self.agreement_ids
@@ -330,9 +327,7 @@ class LiveRunner(Runner):
     Raises NotImplementedError until fully wired.
     """
 
-    def phase1_solve(
-        self, prompt: str, question_id: int
-    ) -> List[SolverSignal]:
+    def phase1_solve(self, prompt: str, question_id: int) -> list[SolverSignal]:
         raise NotImplementedError(
             "LiveRunner requires live model services. "
             "Set SYNOD_BENCH_LIVE=1 and configure API keys."
@@ -359,7 +354,7 @@ class StrategyS1:
 
     name = "S1_single_solver"
 
-    def __init__(self, runner: Runner, token_cfg: Optional[Dict[str, int]] = None) -> None:
+    def __init__(self, runner: Runner, token_cfg: dict[str, int] | None = None) -> None:
         self.runner = runner
         self.tc = token_cfg or _token_cfg()
 
@@ -400,12 +395,12 @@ class StrategyS2:
 
     name = "S2_debate_gate"
 
-    def __init__(self, runner: Runner, token_cfg: Optional[Dict[str, int]] = None) -> None:
+    def __init__(self, runner: Runner, token_cfg: dict[str, int] | None = None) -> None:
         self.runner = runner
         self.tc = token_cfg or _token_cfg()
         self._gate = _import_debate_gate()
 
-    def _signals_to_gate_dicts(self, signals: List[SolverSignal]) -> List[Dict[str, Any]]:
+    def _signals_to_gate_dicts(self, signals: list[SolverSignal]) -> list[dict[str, Any]]:
         return [
             {
                 "model": s.model,
@@ -466,7 +461,7 @@ class StrategyS3:
 
     name = "S3_full_debate"
 
-    def __init__(self, runner: Runner, token_cfg: Optional[Dict[str, int]] = None) -> None:
+    def __init__(self, runner: Runner, token_cfg: dict[str, int] | None = None) -> None:
         self.runner = runner
         self.tc = token_cfg or _token_cfg()
 
@@ -505,7 +500,7 @@ class StrategyS3:
 
 def run_strategy(
     strategy: Any,
-    questions: List[Dict[str, Any]],
+    questions: list[dict[str, Any]],
 ) -> StrategyReport:
     """
     Run one strategy over a list of question dicts.
@@ -558,7 +553,7 @@ def _extract_gsm8k_answer(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _fmt_report_table(reports: List[StrategyReport]) -> str:
+def _fmt_report_table(reports: list[StrategyReport]) -> str:
     """Render a compact markdown table."""
     header = (
         "| Strategy | Accuracy | Calls/Q | Total Calls | "
@@ -580,7 +575,7 @@ def _fmt_report_table(reports: List[StrategyReport]) -> str:
     return header + "\n".join(rows)
 
 
-def build_report(reports: List[StrategyReport]) -> Dict[str, Any]:
+def build_report(reports: list[StrategyReport]) -> dict[str, Any]:
     """Build the full JSON report dict."""
     return {
         "meta": {
@@ -609,7 +604,7 @@ def build_report(reports: List[StrategyReport]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def load_mock_gsm8k(n: int = 10) -> List[Dict[str, Any]]:
+def load_mock_gsm8k(n: int = 10) -> list[dict[str, Any]]:
     """
     Return a tiny deterministic GSM8K-shaped dataset for offline CI use.
     Answers are all small integers to simplify verification.
@@ -626,10 +621,7 @@ def load_mock_gsm8k(n: int = 10) -> List[Dict[str, Any]]:
         ("If 8 workers finish a job in 6 days, how many days for 12 workers?", "#### 4"),
         ("A pizza is cut into 8 slices. 3 people each eat 2 slices. How many are left?", "#### 2"),
     ]
-    return [
-        {"id": i, "question": q, "answer": a}
-        for i, (q, a) in enumerate(problems[:n])
-    ]
+    return [{"id": i, "question": q, "answer": a} for i, (q, a) in enumerate(problems[:n])]
 
 
 # ---------------------------------------------------------------------------
@@ -637,7 +629,7 @@ def load_mock_gsm8k(n: int = 10) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Synod accuracy-vs-cost strategy benchmark harness",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -692,8 +684,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         args.mock = not has_keys
         if args.mock:
             print(
-                "Info: API keys not set — running with MockRunner. "
-                "Pass --live to force live mode.",
+                "Info: API keys not set — running with MockRunner. Pass --live to force live mode.",
                 file=sys.stderr,
             )
 
@@ -706,9 +697,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         questions = load_mock_gsm8k(args.n)
         # All even-ID questions are "agreement" questions (S2 will skip debate)
         agreement_ids = [q["id"] for q in questions if q["id"] % 2 == 0]
-        correct_answers = {
-            q["id"]: _extract_gsm8k_answer(q["answer"]) for q in questions
-        }
+        correct_answers = {q["id"]: _extract_gsm8k_answer(q["answer"]) for q in questions}
         runner: Runner = MockRunner(answers=correct_answers, agreement_ids=agreement_ids)
     else:
         runner = LiveRunner()

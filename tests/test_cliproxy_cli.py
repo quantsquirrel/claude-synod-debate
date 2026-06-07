@@ -20,24 +20,15 @@ class TestClipProxyProvider:
         cliproxy = load_cli_module("cliproxy-cli.py")
 
         assert cliproxy.ClipProxyProvider.DEFAULT_MODEL == "gpt55fast"
-        assert (
-            cliproxy.ClipProxyProvider.MODEL_MAP["gpt55fast"]
-            == "gpt-5.5-fast(xhigh)"
-        )
+        assert cliproxy.ClipProxyProvider.MODEL_MAP["gpt55fast"] == "gpt-5.5-fast(xhigh)"
         assert cliproxy.ClipProxyProvider.MODEL_MAP["gpt55"] == "gpt-5.5(xhigh)"
         assert cliproxy.ClipProxyProvider.MODEL_MAP["gpt54mini"] == "gpt-5.4-mini"
 
     def test_legacy_openai_aliases_map_to_cliproxy_defaults(self):
         cliproxy = load_cli_module("cliproxy-cli.py")
 
-        assert (
-            cliproxy.ClipProxyProvider.MODEL_MAP["o3"]
-            == "gpt-5.5-fast(xhigh)"
-        )
-        assert (
-            cliproxy.ClipProxyProvider.MODEL_MAP["gpt4o"]
-            == "gpt-5.5-fast(xhigh)"
-        )
+        assert cliproxy.ClipProxyProvider.MODEL_MAP["o3"] == "gpt-5.5-fast(xhigh)"
+        assert cliproxy.ClipProxyProvider.MODEL_MAP["gpt4o"] == "gpt-5.5-fast(xhigh)"
 
     def test_timeout_defaults_are_model_specific(self):
         cliproxy = load_cli_module("cliproxy-cli.py")
@@ -70,9 +61,7 @@ class TestClipProxyProvider:
                     ]
                 )
 
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=FakeCompletions())
-        )
+        fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
         args = SimpleNamespace(reasoning="high")
 
         assert provider.generate(fake_client, "gpt-5.5-fast(xhigh)", "hi", args=args) == "ok"
@@ -82,7 +71,6 @@ class TestClipProxyProvider:
                 "messages": [{"role": "user", "content": "hi"}],
             }
         ]
-
 
     def test_config_api_key_is_loaded_from_local_cliproxy_yaml(self, monkeypatch, tmp_path):
         cliproxy = load_cli_module("cliproxy-cli.py")

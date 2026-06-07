@@ -22,7 +22,7 @@ import sys
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
 # Shared API key resolution: env var → ~/.synod/.env → macOS Keychain
@@ -186,7 +186,7 @@ def is_prompt_cache_enabled() -> bool:
 def build_cached_messages(
     stable_prefix: str,
     dynamic_suffix: str,
-) -> "List[Dict[str, Any]]":
+) -> "list[dict[str, Any]]":
     """Build an OpenAI-compatible messages list with a cacheable stable prefix.
 
     Cache-friendly ordering rule: stable content (task description,
@@ -220,14 +220,14 @@ def build_cached_messages(
     else:
         prefix_content = stable_prefix  # type: ignore[assignment]
 
-    messages: List[Dict[str, Any]] = [
+    messages: list[dict[str, Any]] = [
         {"role": "system", "content": prefix_content},
         {"role": "user", "content": dynamic_suffix},
     ]
     return messages
 
 
-def build_single_turn_messages(prompt: str) -> "List[Dict[str, Any]]":
+def build_single_turn_messages(prompt: str) -> "list[dict[str, Any]]":
     """Build a simple single-turn messages list, optionally with cache marker.
 
     When the caller has a single undivided prompt (legacy path), this helper

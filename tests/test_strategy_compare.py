@@ -13,12 +13,12 @@ required.  Tests assert:
   4. Report JSON has the expected top-level shape.
   5. Gate decision values are plausible.
 """
+
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pytest
 
@@ -35,7 +35,6 @@ for _p in (str(_ROOT), str(_BENCHMARK)):
 
 from benchmark.strategy_compare import (  # noqa: E402
     MockRunner,
-    QuestionResult,
     StrategyReport,
     StrategyS1,
     StrategyS2,
@@ -47,13 +46,12 @@ from benchmark.strategy_compare import (  # noqa: E402
     run_strategy,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 # Small deterministic question set shared across tests
-_QUESTIONS: List[Dict] = [
+_QUESTIONS: list[dict] = [
     {"id": 0, "question": "What is 2+2?", "answer": "#### 4"},
     {"id": 1, "question": "What is 10-3?", "answer": "#### 7"},
     {"id": 2, "question": "What is 5*6?", "answer": "#### 30"},
@@ -61,12 +59,10 @@ _QUESTIONS: List[Dict] = [
     {"id": 4, "question": "What is 3^2?", "answer": "#### 9"},
 ]
 
-_CORRECT_ANSWERS: Dict[int, str] = {
-    q["id"]: _extract_gsm8k_answer(q["answer"]) for q in _QUESTIONS
-}
+_CORRECT_ANSWERS: dict[int, str] = {q["id"]: _extract_gsm8k_answer(q["answer"]) for q in _QUESTIONS}
 
 # IDs 0, 2, 4 are "agreement" questions (even IDs → MockRunner makes solvers agree)
-_AGREEMENT_IDS: List[int] = [0, 2, 4]
+_AGREEMENT_IDS: list[int] = [0, 2, 4]
 # IDs 1, 3 are "disagreement" questions → gate will NOT skip
 
 
@@ -147,9 +143,7 @@ class TestHarnessCompletes:
 
 
 class TestCallEfficiency:
-    def test_s2_fewer_calls_than_s3_when_all_agree(
-        self, runner_all_agree: MockRunner
-    ) -> None:
+    def test_s2_fewer_calls_than_s3_when_all_agree(self, runner_all_agree: MockRunner) -> None:
         """
         When every solver agrees with high confidence, S2 (gate=1) should
         skip debate for all questions → fewer total calls than S3.
@@ -163,9 +157,7 @@ class TestCallEfficiency:
             "when all questions have high-agreement solvers and gate is ON"
         )
 
-    def test_s2_fewer_calls_than_s3_on_mixed_set(
-        self, runner: MockRunner
-    ) -> None:
+    def test_s2_fewer_calls_than_s3_on_mixed_set(self, runner: MockRunner) -> None:
         """
         With a mixed set (some agree, some don't), S2 gate=1 should still
         save calls vs S3 (which always debates).
@@ -176,8 +168,7 @@ class TestCallEfficiency:
 
         # At least the agreement questions should save calls
         assert r2.total_calls <= r3.total_calls, (
-            f"S2 ({r2.total_calls}) should never exceed S3 ({r3.total_calls}) calls "
-            "when gate is ON"
+            f"S2 ({r2.total_calls}) should never exceed S3 ({r3.total_calls}) calls when gate is ON"
         )
 
     def test_s2_gate_off_equals_s3_calls(self, runner_all_agree: MockRunner) -> None:
@@ -186,9 +177,7 @@ class TestCallEfficiency:
         Total calls should match S3 pattern (both always debate).
         """
         r2_off = _run_s2(runner_all_agree, gate_on=False)
-        s3 = StrategyS3(
-            MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=list(_CORRECT_ANSWERS))
-        )
+        s3 = StrategyS3(MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=list(_CORRECT_ANSWERS)))
         r3 = run_strategy(s3, _QUESTIONS)
 
         # Both always debate → same calls per question
@@ -276,14 +265,12 @@ class TestAccuracy:
 
 
 class TestReportShape:
-    def _get_reports(self, runner: Optional[MockRunner] = None) -> list:
+    def _get_reports(self, runner: MockRunner | None = None) -> list:
         if runner is None:
             runner = MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=_AGREEMENT_IDS)
         reports = []
         for StratCls in (StrategyS1, StrategyS2, StrategyS3):
-            strat = StratCls(
-                MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=_AGREEMENT_IDS)
-            )
+            strat = StratCls(MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=_AGREEMENT_IDS))
             reports.append(run_strategy(strat, _QUESTIONS))
         return reports
 
@@ -306,9 +293,16 @@ class TestReportShape:
     def test_each_strategy_entry_has_required_fields(self) -> None:
         report = build_report(self._get_reports())
         required = {
-            "strategy", "n_questions", "n_correct", "accuracy",
-            "total_calls", "calls_per_question", "total_wall_seconds",
-            "total_token_estimate", "estimated_cost_usd", "per_question_results",
+            "strategy",
+            "n_questions",
+            "n_correct",
+            "accuracy",
+            "total_calls",
+            "calls_per_question",
+            "total_wall_seconds",
+            "total_token_estimate",
+            "estimated_cost_usd",
+            "per_question_results",
         }
         for entry in report["strategies"]:
             missing = required - set(entry.keys())

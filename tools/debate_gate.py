@@ -37,13 +37,13 @@ Usage
   debate_gate.py --signals-dir <round-1-solver-dir>
   debate_gate.py --signals-json '[{"model":"gpt-4o","confidence":90,...},...]'
 """
+
 from __future__ import annotations
 
 import argparse
 import glob
 import json
 import os
-import re
 import string
 import sys
 from typing import Any
@@ -60,11 +60,53 @@ _DEFAULT_MIN_CANEXIT = 0.5
 
 _STOPWORDS = frozenset(
     {
-        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-        "should", "may", "might", "must", "can", "could", "of", "in", "on",
-        "at", "to", "for", "with", "by", "from", "as", "that", "this",
-        "it", "its", "not", "no", "and", "or", "but", "so",
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "must",
+        "can",
+        "could",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "with",
+        "by",
+        "from",
+        "as",
+        "that",
+        "this",
+        "it",
+        "its",
+        # NOTE: negation words ("not", "no", "never", "cannot") are deliberately
+        # NOT stopwords — stripping them made "X" and "not X" tokenize identically,
+        # so two opposite high-confidence claims scored agreement 1.0 and wrongly
+        # skipped the debate. Keep negation tokens so contradictions stay visible.
+        "and",
+        "or",
+        "but",
+        "so",
     }
 )
 
@@ -102,6 +144,20 @@ def _tokenize(text: str) -> set[str]:
     return tokens
 
 
+def _safe_float(value, default: float = 0.0) -> float:
+    """Coerce to float, returning ``default`` on any bad value.
+
+    Keeps the gate fail-OPEN and crash-free: a non-numeric confidence/trust
+    field becomes a conservative default (e.g. 0.0) that prevents a skip rather
+    than raising an uncaught ValueError mid-decision (the previous inconsistency
+    where malformed *shape* fail-safed but a malformed *number* tracebacked).
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _jaccard(a: set[str], b: set[str]) -> float:
     if not a and not b:
         return 1.0
@@ -109,6 +165,33 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     if not union:
         return 0.0
     return len(a & b) / len(union)
+
+
+# Negation-bearing tokens. Kept OUT of _STOPWORDS so they survive tokenization,
+# and handled explicitly here: plain Jaccard treats "not" as a single differing
+# token (high overlap), so "X" and "not X" would look ~80% similar and the gate
+# would wrongly skip the debate. _claim_similarity collapses that to ~0.
+_NEGATIONS = frozenset(
+    {"not", "no", "never", "cannot", "cant", "none", "neither", "nor", "without"}
+)
+
+
+def _claim_similarity(a: set[str], b: set[str]) -> float:
+    """Negation-polarity-aware Jaccard between two primary-claim token sets.
+
+    When the two claims share their semantic (non-negation) tokens but disagree
+    on negation parity (one negated, one not), they are contradictory — the more
+    semantically similar they are, the STRONGER the contradiction, so the score
+    is driven toward 0. Same-parity claims use ordinary semantic Jaccard.
+    """
+    neg_a = bool(len(a & _NEGATIONS) % 2)
+    neg_b = bool(len(b & _NEGATIONS) % 2)
+    sem_a = a - _NEGATIONS
+    sem_b = b - _NEGATIONS
+    j = _jaccard(sem_a, sem_b)
+    if neg_a != neg_b:
+        return j * (1.0 - j)
+    return j
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +220,7 @@ def claim_agreement(focus_lists: list[list[str]]) -> float:
     total = 0.0
     for i in range(n):
         for j in range(i + 1, n):
-            total += _jaccard(primaries[i], primaries[j])
+            total += _claim_similarity(primaries[i], primaries[j])
             pairs += 1
 
     return total / pairs if pairs else 0.0
@@ -152,23 +235,28 @@ def _weighted_vote(signals: list[dict]) -> dict:
     if not signals:
         return {"final_confidence": 0.0, "weights": {}, "dominant_model": None}
 
-    total_trust = sum(float(s.get("trust_score", 1.0)) for s in signals)
+    total_trust = sum(_safe_float(s.get("trust_score", 1.0), 1.0) for s in signals)
 
     if total_trust == 0:
         n = len(signals)
-        final = sum(float(s.get("confidence", 0)) for s in signals) / n
+        final = sum(_safe_float(s.get("confidence", 0)) for s in signals) / n
         weights = {s.get("model", f"model_{i}"): round(1.0 / n, 3) for i, s in enumerate(signals)}
     else:
         final = (
-            sum(float(s.get("trust_score", 1.0)) * float(s.get("confidence", 0)) for s in signals)
+            sum(
+                _safe_float(s.get("trust_score", 1.0), 1.0) * _safe_float(s.get("confidence", 0))
+                for s in signals
+            )
             / total_trust
         )
         weights = {
-            s.get("model", f"model_{i}"): round(float(s.get("trust_score", 1.0)) / total_trust, 3)
+            s.get("model", f"model_{i}"): round(
+                _safe_float(s.get("trust_score", 1.0), 1.0) / total_trust, 3
+            )
             for i, s in enumerate(signals)
         }
 
-    dominant = max(signals, key=lambda s: float(s.get("trust_score", 1.0)))
+    dominant = max(signals, key=lambda s: _safe_float(s.get("trust_score", 1.0), 1.0))
 
     return {
         "final_confidence": round(final, 1),
@@ -254,10 +342,10 @@ def decide(signals: list[dict]) -> dict[str, Any]:
     focus_lists = [s.get("semantic_focus") or [] for s in signals]
     ca = claim_agreement(focus_lists)
 
-    confidences = [float(s.get("confidence", 0)) for s in signals]
+    confidences = [_safe_float(s.get("confidence", 0)) for s in signals]
     min_confidence_val = min(confidences) if confidences else 0.0
     frac_ce = sum(1 for s in signals if s.get("can_exit", False)) / n
-    frac_hc = sum(1 for s in signals if float(s.get("confidence", 0)) >= high_conf) / n
+    frac_hc = sum(1 for s in signals if _safe_float(s.get("confidence", 0)) >= high_conf) / n
 
     # Composite agreement score
     agreement_score = round(0.5 * ca + 0.3 * frac_ce + 0.2 * frac_hc, 4)
@@ -268,10 +356,8 @@ def decide(signals: list[dict]) -> dict[str, Any]:
     dominant_model = vote_result["dominant_model"]
 
     # Additional derived values for hardened skip criteria
-    min_trust = min(float(s.get("trust_score", 1.0)) for s in signals)
-    primary_sufficient = all(
-        len(_tokenize(fl[0])) >= 2 if fl else False for fl in focus_lists
-    )
+    min_trust = min(_safe_float(s.get("trust_score", 1.0), 0.0) for s in signals)
+    primary_sufficient = all(len(_tokenize(fl[0])) >= 2 if fl else False for fl in focus_lists)
 
     signal_components = {
         "claim_agreement": round(ca, 4),
@@ -418,8 +504,13 @@ def load_signals_from_dir(signals_dir: str) -> list[dict]:
             signal = _normalize_parsed(data, path)
             if signal:
                 signals.append(signal)
-        except Exception:
-            # Fail-safe: skip bad files; caller gets fewer signals -> run_debate
+        except Exception as exc:
+            # Fail-safe: a corrupt file is dropped (fewer signals -> run_debate),
+            # but warn so the drop is NOT silent — a silently-dropped dissenter
+            # could otherwise let the remaining agreeing signals skip the debate.
+            print(
+                f"[debate_gate] WARN: skipped unreadable signal file {path}: {exc}", file=sys.stderr
+            )
             continue
     return signals
 
@@ -432,10 +523,10 @@ def _normalize_parsed(data: dict, path: str) -> dict | None:
     model_name = data.get("model") or os.path.basename(path).replace("-parsed.json", "")
     return {
         "model": model_name,
-        "confidence": float(conf_block.get("score", 0)),
+        "confidence": _safe_float(conf_block.get("score", 0)),
         "can_exit": bool(conf_block.get("can_exit", False)),
         "semantic_focus": data.get("semantic_focus") or [],
-        "trust_score": float(data.get("trust_score", 1.0)),
+        "trust_score": _safe_float(data.get("trust_score", 1.0), 1.0),
     }
 
 

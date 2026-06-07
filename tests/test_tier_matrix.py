@@ -189,11 +189,17 @@ class TestMainRosterLookup:
 
     def test_invalid_tier_exits_2(self, capsys):
         sys.argv = ["tier_matrix.py", "--tier", "standard"]
-        matrix_data = load_matrix(_REAL_MATRIX)
+        load_matrix(_REAL_MATRIX)
         # Use a custom matrix that lacks the 'standard' tier to trigger exit 2
         # by passing a minimal matrix file pointing to a tier not in it
         with pytest.raises(SystemExit) as exc:
-            sys.argv = ["tier_matrix.py", "--tier", "standard", "--matrix", "/nonexistent/path.json"]
+            sys.argv = [
+                "tier_matrix.py",
+                "--tier",
+                "standard",
+                "--matrix",
+                "/nonexistent/path.json",
+            ]
             _tier_matrix.main()
         assert exc.value.code == 2
 
@@ -218,9 +224,7 @@ class TestMainRosterLookup:
         """
         meta = tmp_path / "meta.json"
         meta.write_text(json.dumps({"tier": "fast", "complexity": "simple"}))
-        result = self._run_main(
-            ["--tier", "auto", "--classifier-json", str(meta)], capsys
-        )
+        result = self._run_main(["--tier", "auto", "--classifier-json", str(meta)], capsys)
         assert result["tier"] == "simple", (
             f"expected tier='simple' from meta.json tier='fast', got '{result['tier']}'"
         )

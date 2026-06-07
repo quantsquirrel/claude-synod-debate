@@ -180,8 +180,20 @@ class TestDecideGateOff:
         """Even perfect agreement signals produce run_debate when flag is off."""
         monkeypatch.delenv("SYNOD_DEBATE_GATE", raising=False)
         perfect = [
-            {"model": "a", "confidence": 99, "can_exit": True, "semantic_focus": ["Python faster Ruby"], "trust_score": 1.0},
-            {"model": "b", "confidence": 99, "can_exit": True, "semantic_focus": ["Python faster Ruby"], "trust_score": 1.0},
+            {
+                "model": "a",
+                "confidence": 99,
+                "can_exit": True,
+                "semantic_focus": ["Python faster Ruby"],
+                "trust_score": 1.0,
+            },
+            {
+                "model": "b",
+                "confidence": 99,
+                "can_exit": True,
+                "semantic_focus": ["Python faster Ruby"],
+                "trust_score": 1.0,
+            },
         ]
         result = _gate.decide(perfect)
         assert result["decision"] == "run_debate"
@@ -209,8 +221,20 @@ class TestDecideGateOn:
         """High confidence but low claim overlap -> run_debate."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         signals = [
-            {"model": "a", "confidence": 95, "can_exit": True, "semantic_focus": ["Python speed benchmarks"], "trust_score": 1.0},
-            {"model": "b", "confidence": 95, "can_exit": True, "semantic_focus": ["Ruby metaprogramming elegance"], "trust_score": 1.0},
+            {
+                "model": "a",
+                "confidence": 95,
+                "can_exit": True,
+                "semantic_focus": ["Python speed benchmarks"],
+                "trust_score": 1.0,
+            },
+            {
+                "model": "b",
+                "confidence": 95,
+                "can_exit": True,
+                "semantic_focus": ["Ruby metaprogramming elegance"],
+                "trust_score": 1.0,
+            },
         ]
         result = _gate.decide(signals)
         assert result["decision"] == "run_debate"
@@ -226,8 +250,20 @@ class TestDecideGateOn:
         """Min confidence below threshold -> run_debate."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         signals = [
-            {"model": "a", "confidence": 50, "can_exit": True, "semantic_focus": ["Python fast ruby slow"], "trust_score": 1.0},
-            {"model": "b", "confidence": 50, "can_exit": True, "semantic_focus": ["Python fast ruby slow"], "trust_score": 1.0},
+            {
+                "model": "a",
+                "confidence": 50,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby slow"],
+                "trust_score": 1.0,
+            },
+            {
+                "model": "b",
+                "confidence": 50,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby slow"],
+                "trust_score": 1.0,
+            },
         ]
         result = _gate.decide(signals)
         assert result["decision"] == "run_debate"
@@ -237,7 +273,15 @@ class TestDecideGateOn:
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         result = _gate.decide(_AGREEING_SIGNALS)
         assert result["decision"] == "skip_debate"
-        for key in ("decision", "agreement_score", "vote_confidence", "dominant_model", "n_solvers", "rationale", "signals"):
+        for key in (
+            "decision",
+            "agreement_score",
+            "vote_confidence",
+            "dominant_model",
+            "n_solvers",
+            "rationale",
+            "signals",
+        ):
             assert key in result
 
     def test_n_solvers_correct(self, monkeypatch):
@@ -299,8 +343,20 @@ class TestThresholdOverrides:
         monkeypatch.setenv("SYNOD_GATE_HIGH_CONF", "1")
         monkeypatch.setenv("SYNOD_GATE_MIN_TRUST", "0.0")
         signals = [
-            {"model": "a", "confidence": 90, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 1.0},
-            {"model": "b", "confidence": 90, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 1.0},
+            {
+                "model": "a",
+                "confidence": 90,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 1.0,
+            },
+            {
+                "model": "b",
+                "confidence": 90,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 1.0,
+            },
         ]
         result = _gate.decide(signals)
         assert result["decision"] == "skip_debate"
@@ -337,8 +393,20 @@ class TestWeightedVote:
         """dominant_model is the solver with highest trust_score."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         signals = [
-            {"model": "low-trust", "confidence": 90, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 0.5},
-            {"model": "high-trust", "confidence": 90, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 2.0},
+            {
+                "model": "low-trust",
+                "confidence": 90,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 0.5,
+            },
+            {
+                "model": "high-trust",
+                "confidence": 90,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 2.0,
+            },
         ]
         result = _gate.decide(signals)
         assert result["dominant_model"] == "high-trust"
@@ -347,8 +415,20 @@ class TestWeightedVote:
         """With equal trust scores a dominant model is still selected."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         signals = [
-            {"model": "a", "confidence": 90, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 1.0},
-            {"model": "b", "confidence": 90, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 1.0},
+            {
+                "model": "a",
+                "confidence": 90,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 1.0,
+            },
+            {
+                "model": "b",
+                "confidence": 90,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 1.0,
+            },
         ]
         result = _gate.decide(signals)
         assert result["dominant_model"] in ("a", "b")
@@ -357,8 +437,18 @@ class TestWeightedVote:
         """Signals without trust_score fall back to equal weighting."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         signals = [
-            {"model": "a", "confidence": 80, "can_exit": True, "semantic_focus": ["Python fast ruby"]},
-            {"model": "b", "confidence": 80, "can_exit": True, "semantic_focus": ["Python fast ruby"]},
+            {
+                "model": "a",
+                "confidence": 80,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+            },
+            {
+                "model": "b",
+                "confidence": 80,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+            },
         ]
         result = _gate.decide(signals)
         assert result["vote_confidence"] == pytest.approx(80.0, abs=0.5)
@@ -368,8 +458,20 @@ class TestWeightedVote:
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         # trust: a=1, b=3 -> weights 0.25/0.75 -> expected: 0.25*60 + 0.75*100 = 90
         signals = [
-            {"model": "a", "confidence": 60, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 1.0},
-            {"model": "b", "confidence": 100, "can_exit": True, "semantic_focus": ["Python fast ruby"], "trust_score": 3.0},
+            {
+                "model": "a",
+                "confidence": 60,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 1.0,
+            },
+            {
+                "model": "b",
+                "confidence": 100,
+                "can_exit": True,
+                "semantic_focus": ["Python fast ruby"],
+                "trust_score": 3.0,
+            },
         ]
         result = _gate.decide(signals)
         assert result["vote_confidence"] == pytest.approx(90.0, abs=0.5)
@@ -413,7 +515,11 @@ class TestCLISignalsDir:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # One valid file
-            valid = {"confidence": {"score": 90, "can_exit": True}, "semantic_focus": ["X"], "trust_score": 1.0}
+            valid = {
+                "confidence": {"score": 90, "can_exit": True},
+                "semantic_focus": ["X"],
+                "trust_score": 1.0,
+            }
             with open(os.path.join(tmpdir, "model-a-parsed.json"), "w") as f:
                 json.dump(valid, f)
             # One corrupt file
@@ -614,3 +720,83 @@ class TestHardenedGuards:
         assert result["decision"] == "skip_debate", (
             f"Expected skip at boundary score={actual_score}, got: {result['rationale']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Negation regression — opposite primary claims must NOT skip the debate.
+# Previously "not"/"no" were stopwords, so "X" and "not X" tokenized identically
+# (agreement 1.0 -> skip_debate). Negation tokens are now preserved.
+# ---------------------------------------------------------------------------
+
+
+class TestNegationPreserved:
+    def _sig(self, model, focus):
+        return {
+            "model": model,
+            "confidence": 92,
+            "can_exit": True,
+            "semantic_focus": [focus],
+            "trust_score": 1.3,
+            "vote_weight": 1.0,
+        }
+
+    def test_claim_agreement_distinguishes_negation(self):
+        opp = _gate.claim_agreement(
+            [["Python is faster than Ruby"], ["Python is not faster than Ruby"]]
+        )
+        same = _gate.claim_agreement(
+            [["Python is faster than Ruby"], ["Python is faster than Ruby"]]
+        )
+        assert opp < 1.0, f"opposite claims must not score 1.0 agreement, got {opp}"
+        assert same == 1.0
+
+    def test_opposite_claims_run_debate_even_when_gate_enabled(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        signals = [
+            self._sig("gpt-4o", "Python is faster than Ruby"),
+            self._sig("gemini-flash", "Python is not faster than Ruby"),
+        ]
+        result = _gate.decide(signals)
+        assert result["decision"] == "run_debate", result
+        assert result["agreement_score"] < 1.0
+
+    def test_identical_claims_can_still_skip_when_gate_enabled(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        signals = [
+            self._sig("gpt-4o", "Python is faster than Ruby for CPU-bound tasks"),
+            self._sig("gemini-flash", "Python is faster than Ruby for CPU-bound tasks"),
+            self._sig("claude-sonnet", "Python is faster than Ruby for CPU-bound tasks"),
+        ]
+        result = _gate.decide(signals)
+        assert result["decision"] == "skip_debate", result
+
+
+class TestFailSafeBadNumbers:
+    """Malformed *numeric* fields must fail-OPEN (run_debate), never traceback —
+    matching the existing fail-safe for malformed shape."""
+
+    def test_non_numeric_confidence_and_trust_no_traceback(self):
+        signals = [
+            {
+                "model": "a",
+                "confidence": "high",
+                "can_exit": True,
+                "semantic_focus": ["x y"],
+                "trust_score": "n/a",
+            },
+            {
+                "model": "b",
+                "confidence": 95,
+                "can_exit": True,
+                "semantic_focus": ["x y"],
+                "trust_score": 1.2,
+            },
+        ]
+        result = _gate.decide(signals)  # must not raise
+        assert result["decision"] == "run_debate"
+        assert result["signals"]["min_confidence"] == 0.0
+
+    def test_safe_float_helper(self):
+        assert _gate._safe_float("12.5") == 12.5
+        assert _gate._safe_float("abc") == 0.0
+        assert _gate._safe_float(None, 1.0) == 1.0

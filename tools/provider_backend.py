@@ -116,17 +116,14 @@ def resolve_entry(entry: dict, backend: str) -> dict:
 
     provider = entry.get("provider")
     if provider not in DIRECT_CLI:
-        raise BackendResolutionError(
-            f"no direct CLI mapping for provider '{provider}'"
-        )
+        raise BackendResolutionError(f"no direct CLI mapping for provider '{provider}'")
     out["cli"] = DIRECT_CLI[provider]
 
     model = entry.get("model")
     model_map = DIRECT_MODEL.get(provider, {})
     if model not in model_map:
         raise BackendResolutionError(
-            f"no direct model mapping for {provider} model '{model}' "
-            f"(known: {sorted(model_map)})"
+            f"no direct model mapping for {provider} model '{model}' (known: {sorted(model_map)})"
         )
     out["model"] = model_map[model]
 
@@ -139,6 +136,33 @@ def resolve_entry(entry: dict, backend: str) -> dict:
 def resolve_roster(roster: list, backend: str) -> list:
     """Rewrite every entry of a tier roster for ``backend``."""
     return [resolve_entry(entry, backend) for entry in roster]
+
+
+def translate_model(provider: str, model: str, backend: str) -> str:
+    """Translate a single provider model string for ``backend``.
+
+    Used by the /synod runtime (SKILL.md / phase1) to convert a bridge model
+    string (e.g. ``3.5-flash``) to its direct-CLI equivalent (``flash-latest``)
+    when SYNOD_PROVIDER_BACKEND=direct. ``bridge`` returns the model unchanged.
+    Raises BackendResolutionError for an unmapped direct model.
+    """
+    if backend == BRIDGE:
+        return model
+    if backend != DIRECT:
+        raise BackendResolutionError(f"unsupported backend '{backend}'")
+    model_map = DIRECT_MODEL.get(provider, {})
+    if model not in model_map:
+        raise BackendResolutionError(
+            f"no direct model mapping for {provider} model '{model}' (known: {sorted(model_map)})"
+        )
+    return model_map[model]
+
+
+def direct_cli_for(provider: str) -> str:
+    """Return the direct CLI name for a provider (gemini→gemini-3, openai→openai-cli)."""
+    if provider not in DIRECT_CLI:
+        raise BackendResolutionError(f"no direct CLI mapping for provider '{provider}'")
+    return DIRECT_CLI[provider]
 
 
 def main() -> None:
@@ -155,9 +179,39 @@ def main() -> None:
         metavar="PATH",
         help="Path to a JSON file holding a roster list (default: stdin)",
     )
+    parser.add_argument(
+        "--translate-model",
+        metavar="MODEL",
+        help="Translate a single model string for the backend and print it (with --provider)",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=sorted(DIRECT_CLI),
+        help="Provider for --translate-model (gemini|openai)",
+    )
+    parser.add_argument(
+        "--print-cli",
+        action="store_true",
+        help="With --provider, print the backend CLI name instead of a model",
+    )
     args = parser.parse_args()
 
     backend = get_backend(args.backend)
+
+    # Single-model translation mode (runtime helper for SKILL.md / phase1).
+    if args.translate_model is not None or args.print_cli:
+        if not args.provider:
+            print("error: --provider required for --translate-model/--print-cli", file=sys.stderr)
+            sys.exit(2)
+        try:
+            if args.print_cli:
+                print(args.provider if backend == BRIDGE else direct_cli_for(args.provider))
+            else:
+                print(translate_model(args.provider, args.translate_model, backend))
+        except BackendResolutionError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(2)
+        return
 
     try:
         if args.roster_json:

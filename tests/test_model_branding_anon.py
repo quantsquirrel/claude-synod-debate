@@ -11,12 +11,9 @@ Covers:
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
 import model_branding  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Provider substrings that must NOT appear in any alias
@@ -131,9 +128,7 @@ class TestDeanonymize:
         """anonymize then deanonymize must recover original model names."""
         anon_map = model_branding.build_anon_map(ROSTER)
         # Build a text that contains all three aliases
-        text = (
-            "Agent-1 proposed X. Agent-2 disagreed. Agent-3 abstained."
-        )
+        text = "Agent-1 proposed X. Agent-2 disagreed. Agent-3 abstained."
         restored = model_branding.deanonymize(text, anon_map)
         # Each real model name must appear; no alias may remain
         for real in ROSTER:

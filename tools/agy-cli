@@ -88,4 +88,24 @@ PY
 
 # macOS `script -q /dev/null cmd ...` provides the PTY required by agy; strip
 # terminal CR and the EOF marker that script can append.
-script -q /dev/null agy --print "$prompt" 2>/dev/null | python3 -c 'import sys; data=sys.stdin.read().replace("^D\b\b", "").replace("\r", "").replace("\x04", ""); sys.stdout.write(data)'
+#
+# Failure propagation: the previous pipeline masked agy failures because the
+# pipeline exit status was the python filter's (always 0) and agy stderr was
+# discarded. Capture agy's output and exit code, surface its stderr, and treat
+# BOTH a non-zero exit AND empty output as failure so Synod never mistakes a
+# failed Gemini call for a valid response.
+_agy_err=$(mktemp 2>/dev/null || echo "/tmp/agy_err.$$")
+_agy_raw=$(script -q /dev/null agy --print "$prompt" 2>"$_agy_err")
+_agy_rc=$?
+_agy_out=$(printf '%s' "$_agy_raw" | python3 -c 'import sys; data=sys.stdin.read().replace("^D\b\b", "").replace("\r", "").replace("\x04", ""); sys.stdout.write(data)')
+
+if [ "$_agy_rc" -ne 0 ] || [ -z "$_agy_out" ]; then
+    [ -s "$_agy_err" ] && cat "$_agy_err" >&2
+    rm -f "$_agy_err"
+    echo "Error: agy --print failed (exit=$_agy_rc, output_empty=$([ -z "$_agy_out" ] && echo yes || echo no))" >&2
+    [ "$_agy_rc" -ne 0 ] && exit "$_agy_rc"
+    exit 1
+fi
+
+rm -f "$_agy_err"
+printf '%s' "$_agy_out"

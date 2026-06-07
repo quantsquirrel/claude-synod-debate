@@ -17,21 +17,21 @@ verify request-shape correctness only.
 """
 
 import importlib.util
-import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _load_module(filename: str):
     module_path = Path(__file__).parent.parent / "tools" / filename
-    spec = importlib.util.spec_from_file_location(filename.replace("-", "_").replace(".py", ""), module_path)
+    spec = importlib.util.spec_from_file_location(
+        filename.replace("-", "_").replace(".py", ""), module_path
+    )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -51,6 +51,7 @@ def cliproxy_module():
 # ---------------------------------------------------------------------------
 # is_prompt_cache_enabled
 # ---------------------------------------------------------------------------
+
 
 class TestIsPromptCacheEnabled:
     def test_disabled_by_default(self, monkeypatch, base_provider_module):
@@ -73,6 +74,7 @@ class TestIsPromptCacheEnabled:
 # ---------------------------------------------------------------------------
 # build_cached_messages — ordering and marker presence
 # ---------------------------------------------------------------------------
+
 
 class TestBuildCachedMessages:
     def test_stable_prefix_is_first_message(self, monkeypatch, base_provider_module):
@@ -103,7 +105,9 @@ class TestBuildCachedMessages:
         msgs = base_provider_module.build_cached_messages("STABLE", "DYNAMIC")
         prefix_content = msgs[0]["content"]
         # Without caching the prefix is a plain string, no cache_control block
-        assert isinstance(prefix_content, str), "prefix content should be plain string when caching off"
+        assert isinstance(prefix_content, str), (
+            "prefix content should be plain string when caching off"
+        )
         assert prefix_content == "STABLE"
 
     def test_cache_control_absent_when_env_unset(self, monkeypatch, base_provider_module):
@@ -122,6 +126,7 @@ class TestBuildCachedMessages:
 # ---------------------------------------------------------------------------
 # build_single_turn_messages — never adds cache markers
 # ---------------------------------------------------------------------------
+
 
 class TestBuildSingleTurnMessages:
     def test_single_user_message(self, base_provider_module):
@@ -142,6 +147,7 @@ class TestBuildSingleTurnMessages:
 # ClipProxyProvider.generate() — cache marker wiring
 # ---------------------------------------------------------------------------
 
+
 class TestClipProxyGenerateCaching:
     """Verify generate() passes cache-annotated messages when flag is on."""
 
@@ -152,6 +158,7 @@ class TestClipProxyGenerateCaching:
                 return SimpleNamespace(
                     choices=[SimpleNamespace(message=SimpleNamespace(content="response"))]
                 )
+
         return SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
 
     def test_cache_markers_in_payload_when_flag_on_and_prefix_given(
@@ -163,8 +170,10 @@ class TestClipProxyGenerateCaching:
         client = self._make_fake_client(calls)
 
         result = provider.generate(
-            client, "gpt-5.5-fast(xhigh)", "round instruction",
-            stable_prefix="task + evidence + prior transcript"
+            client,
+            "gpt-5.5-fast(xhigh)",
+            "round instruction",
+            stable_prefix="task + evidence + prior transcript",
         )
 
         assert result == "response"
@@ -187,13 +196,38 @@ class TestClipProxyGenerateCaching:
         client = self._make_fake_client(calls)
 
         provider.generate(
-            client, "gpt-5.5-fast(xhigh)", "round instruction",
-            stable_prefix="task + evidence + prior transcript"
+            client,
+            "gpt-5.5-fast(xhigh)",
+            "round instruction",
+            stable_prefix="task + evidence + prior transcript",
         )
 
         msgs = calls[0]["messages"]
         # system message content should be plain string (no cache_control block)
         assert isinstance(msgs[0]["content"], str)
+
+    def test_stable_prefix_retained_when_flag_off(self, monkeypatch, cliproxy_module):
+        """Regression: cache disabled MUST still include the stable prefix as a
+        plain system message (only the cache_control marker is dropped). The old
+        code routed flag-off+prefix to single-turn and lost the prefix entirely."""
+        monkeypatch.setenv("SYNOD_PROMPT_CACHE", "0")
+        calls: list = []
+        provider = cliproxy_module.ClipProxyProvider()
+        client = self._make_fake_client(calls)
+
+        provider.generate(
+            client,
+            "gpt-5.5-fast(xhigh)",
+            "round instruction",
+            stable_prefix="task + evidence + prior transcript",
+        )
+
+        msgs = calls[0]["messages"]
+        assert len(msgs) == 2, "prefix must survive as its own system message"
+        assert msgs[0]["role"] == "system"
+        assert msgs[0]["content"] == "task + evidence + prior transcript"
+        assert msgs[1]["role"] == "user"
+        assert msgs[1]["content"] == "round instruction"
 
     def test_no_cache_markers_when_flag_unset(self, monkeypatch, cliproxy_module):
         monkeypatch.delenv("SYNOD_PROMPT_CACHE", raising=False)
@@ -232,9 +266,7 @@ class TestClipProxyGenerateCaching:
         provider = cliproxy_module.ClipProxyProvider()
         client = self._make_fake_client(calls)
 
-        provider.generate(
-            client, "gpt-5.5-fast(xhigh)", "dynamic only", stable_prefix=""
-        )
+        provider.generate(client, "gpt-5.5-fast(xhigh)", "dynamic only", stable_prefix="")
 
         msgs = calls[0]["messages"]
         assert len(msgs) == 1
@@ -266,19 +298,14 @@ class TestClipProxyGenerateCaching:
                     choices=[SimpleNamespace(message=SimpleNamespace(content="proxy ok"))]
                 )
 
-        client = SimpleNamespace(
-            chat=SimpleNamespace(completions=ProxyThatIgnoresCacheFields())
-        )
+        client = SimpleNamespace(chat=SimpleNamespace(completions=ProxyThatIgnoresCacheFields()))
 
         result = provider.generate(
-            client, "gpt-5.5-fast(xhigh)", "dynamic",
-            stable_prefix="large stable context"
+            client, "gpt-5.5-fast(xhigh)", "dynamic", stable_prefix="large stable context"
         )
         assert result == "proxy ok"
 
-    def test_legacy_reasoning_flag_still_accepted_with_caching(
-        self, monkeypatch, cliproxy_module
-    ):
+    def test_legacy_reasoning_flag_still_accepted_with_caching(self, monkeypatch, cliproxy_module):
         """Existing behaviour (reasoning kwarg accepted) is preserved with caching on."""
         monkeypatch.setenv("SYNOD_PROMPT_CACHE", "1")
         calls: list = []
@@ -287,7 +314,9 @@ class TestClipProxyGenerateCaching:
         args = SimpleNamespace(reasoning="high")
 
         result = provider.generate(
-            client, "gpt-5.5-fast(xhigh)", "hi",
+            client,
+            "gpt-5.5-fast(xhigh)",
+            "hi",
             args=args,
             stable_prefix="stable",
         )

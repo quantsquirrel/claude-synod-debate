@@ -80,9 +80,7 @@ class TestUnmappableMatrix:
         monkeypatch.setenv("GEMINI_API_KEY", "g-test")
         bad = {
             "tiers": {
-                "standard": [
-                    {"provider": "openai", "cli": "cliproxy-cli", "model": "ghost-model"}
-                ]
+                "standard": [{"provider": "openai", "cli": "cliproxy-cli", "model": "ghost-model"}]
             }
         }
         p = tmp_path / "bad_matrix.json"
