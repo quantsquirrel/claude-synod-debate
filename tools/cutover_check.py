@@ -31,6 +31,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 SCRIPT_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -51,7 +52,7 @@ PROVIDER_KEY_ENVS = {
 }
 
 
-def _fail(msg: str) -> None:
+def _fail(msg: str) -> NoReturn:
     print(f"error: {msg}", file=sys.stderr)
     sys.exit(2)
 

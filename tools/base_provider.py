@@ -218,7 +218,7 @@ def build_cached_messages(
             }
         ]
     else:
-        prefix_content = stable_prefix  # type: ignore[assignment]
+        prefix_content = stable_prefix
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": prefix_content},
