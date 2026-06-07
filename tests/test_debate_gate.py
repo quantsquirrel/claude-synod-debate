@@ -533,9 +533,34 @@ class TestCLISignalsDir:
 
         out = capsys.readouterr().out
         result = json.loads(out)
-        # Only 1 valid signal -> n=1 -> run_debate
         assert result["decision"] == "run_debate"
-        assert result["n_solvers"] == 1
+        assert result["n_solvers"] == 2
+        assert "fail-safe" in result["rationale"]
+
+    def test_signals_dir_corrupt_file_forces_run_debate(self, monkeypatch, capsys):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            valid = {
+                "confidence": {"score": 95, "can_exit": True},
+                "semantic_focus": ["Python is faster than Ruby for CPU-bound tasks"],
+                "trust_score": 1.2,
+            }
+            for name in ("model-a", "model-b"):
+                with open(os.path.join(tmpdir, f"{name}-parsed.json"), "w") as f:
+                    json.dump(valid, f)
+            with open(os.path.join(tmpdir, "model-c-parsed.json"), "w") as f:
+                f.write("NOT JSON {{{")
+
+            sys.argv = ["debate_gate.py", "--signals-dir", tmpdir]
+            with pytest.raises(SystemExit) as exc_info:
+                _gate.main()
+            assert exc_info.value.code == 0
+
+        out = capsys.readouterr().out
+        result = json.loads(out)
+        assert result["decision"] == "run_debate"
+        assert "fail-safe" in result["rationale"]
 
     def test_cli_signals_json_inline(self, monkeypatch, capsys):
         """--signals-json with inline JSON produces a decision."""
@@ -760,6 +785,16 @@ class TestNegationPreserved:
         assert result["decision"] == "run_debate", result
         assert result["agreement_score"] < 1.0
 
+    def test_contraction_negation_run_debate_when_gate_enabled(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        signals = [
+            self._sig("gpt-4o", "Python is faster than Ruby"),
+            self._sig("gemini-flash", "Python isn't faster than Ruby"),
+        ]
+        result = _gate.decide(signals)
+        assert result["decision"] == "run_debate", result
+        assert result["signals"]["claim_agreement"] < 0.8
+
     def test_identical_claims_can_still_skip_when_gate_enabled(self, monkeypatch):
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         signals = [
@@ -795,6 +830,28 @@ class TestFailSafeBadNumbers:
         result = _gate.decide(signals)  # must not raise
         assert result["decision"] == "run_debate"
         assert result["signals"]["min_confidence"] == 0.0
+
+    def test_malformed_semantic_focus_item_no_traceback(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        signals = [
+            {
+                "model": "a",
+                "confidence": 95,
+                "can_exit": True,
+                "semantic_focus": [123],
+                "trust_score": 1.2,
+            },
+            {
+                "model": "b",
+                "confidence": 95,
+                "can_exit": True,
+                "semantic_focus": ["x y"],
+                "trust_score": 1.2,
+            },
+        ]
+        result = _gate.decide(signals)
+        assert result["decision"] == "run_debate"
+        assert "fail-safe" in result["rationale"]
 
     def test_safe_float_helper(self):
         assert _gate._safe_float("12.5") == 12.5

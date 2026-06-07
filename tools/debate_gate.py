@@ -172,8 +172,35 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 # token (high overlap), so "X" and "not X" would look ~80% similar and the gate
 # would wrongly skip the debate. _claim_similarity collapses that to ~0.
 _NEGATIONS = frozenset(
-    {"not", "no", "never", "cannot", "cant", "none", "neither", "nor", "without"}
+    {
+        "not",
+        "no",
+        "never",
+        "cannot",
+        "cant",
+        "dont",
+        "doesnt",
+        "didnt",
+        "isnt",
+        "arent",
+        "wasnt",
+        "werent",
+        "wont",
+        "wouldnt",
+        "shouldnt",
+        "couldnt",
+        "havent",
+        "hasnt",
+        "hadnt",
+        "mustnt",
+        "none",
+        "neither",
+        "nor",
+        "without",
+    }
 )
+
+_FAIL_SAFE_KEY = "_debate_gate_fail_safe"
 
 
 def _claim_similarity(a: set[str], b: set[str]) -> float:
@@ -192,6 +219,27 @@ def _claim_similarity(a: set[str], b: set[str]) -> float:
     if neg_a != neg_b:
         return j * (1.0 - j)
     return j
+
+
+def _run_debate_result(reason: str, n_solvers: int = 0) -> dict[str, Any]:
+    return {
+        "decision": "run_debate",
+        "agreement_score": 0.0,
+        "vote_confidence": 0.0,
+        "dominant_model": None,
+        "n_solvers": n_solvers,
+        "rationale": f"fail-safe: {reason}",
+        "signals": {
+            "claim_agreement": 0.0,
+            "frac_can_exit": 0.0,
+            "frac_high_conf": 0.0,
+            "min_confidence": 0.0,
+        },
+    }
+
+
+def _focus_is_string_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
 # ---------------------------------------------------------------------------
@@ -303,40 +351,20 @@ def decide(signals: list[dict]) -> dict[str, Any]:
 
     # --- Fail-safe: bad/empty input -> run_debate ---
     if not signals or not isinstance(signals, list):
-        return {
-            "decision": "run_debate",
-            "agreement_score": 0.0,
-            "vote_confidence": 0.0,
-            "dominant_model": None,
-            "n_solvers": 0,
-            "rationale": "fail-safe: empty or malformed signals",
-            "signals": {
-                "claim_agreement": 0.0,
-                "frac_can_exit": 0.0,
-                "frac_high_conf": 0.0,
-                "min_confidence": 0.0,
-            },
-        }
+        return _run_debate_result("empty or malformed signals")
 
     n = len(signals)
 
     # --- Validate each signal dict (fail-safe on bad shape) ---
     for s in signals:
         if not isinstance(s, dict):
-            return {
-                "decision": "run_debate",
-                "agreement_score": 0.0,
-                "vote_confidence": 0.0,
-                "dominant_model": None,
-                "n_solvers": n,
-                "rationale": "fail-safe: malformed signal entry (not a dict)",
-                "signals": {
-                    "claim_agreement": 0.0,
-                    "frac_can_exit": 0.0,
-                    "frac_high_conf": 0.0,
-                    "min_confidence": 0.0,
-                },
-            }
+            return _run_debate_result("malformed signal entry (not a dict)", n)
+        fail_reason = s.get(_FAIL_SAFE_KEY)
+        if isinstance(fail_reason, str):
+            return _run_debate_result(fail_reason, n)
+        focus = s.get("semantic_focus")
+        if focus is not None and not _focus_is_string_list(focus):
+            return _run_debate_result("malformed semantic_focus", n)
 
     # --- Compute component scores ---
     focus_lists = [s.get("semantic_focus") or [] for s in signals]
@@ -505,20 +533,18 @@ def load_signals_from_dir(signals_dir: str) -> list[dict]:
             if signal:
                 signals.append(signal)
         except Exception as exc:
-            # Fail-safe: a corrupt file is dropped (fewer signals -> run_debate),
-            # but warn so the drop is NOT silent — a silently-dropped dissenter
-            # could otherwise let the remaining agreeing signals skip the debate.
             print(
-                f"[debate_gate] WARN: skipped unreadable signal file {path}: {exc}", file=sys.stderr
+                f"[debate_gate] WARN: unreadable signal file forces debate {path}: {exc}",
+                file=sys.stderr,
             )
-            continue
+            signals.append({_FAIL_SAFE_KEY: f"unreadable signal file {path}"})
     return signals
 
 
 def _normalize_parsed(data: dict, path: str) -> dict | None:
     """Convert a synod-parser output dict to a gate signal dict."""
     if not isinstance(data, dict):
-        return None
+        return {_FAIL_SAFE_KEY: f"malformed parsed signal {path}"}
     conf_block = data.get("confidence") or {}
     model_name = data.get("model") or os.path.basename(path).replace("-parsed.json", "")
     return {

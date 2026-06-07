@@ -197,10 +197,10 @@ if [[ -n "${SYNOD_MODEL_OVERRIDES:-}" ]]; then
   _O="import json,sys;by={m.get('provider'):m for m in json.load(sys.stdin).get('models',[])};print(by.get('openai',{}).get"
   _TIER_NAME=$(_ov "import json,sys;print(json.load(sys.stdin).get('tier',''))")
   _TIER_BACKEND=$(_ov "import json,sys;print(json.load(sys.stdin).get('backend',''))")
-  _TIER_GEMINI_MODEL=$(_ov "${_G}('model',''))")
-  _TIER_GEMINI_THINKING=$(_ov "${_G}('thinking',''))")
-  _TIER_OPENAI_MODEL=$(_ov "${_O}('model',''))")
-  _TIER_OPENAI_REASONING=$(_ov "${_O}('reasoning',''))")
+  _TIER_GEMINI_MODEL=$(_ov "${_G}('model') or '')")
+  _TIER_GEMINI_THINKING=$(_ov "${_G}('thinking') or '')")
+  _TIER_OPENAI_MODEL=$(_ov "${_O}('model') or '')")
+  _TIER_OPENAI_REASONING=$(_ov "${_O}('reasoning') or '')")
 
   [[ -n "$_TIER_GEMINI_MODEL"    ]] && GEMINI_MODEL="$_TIER_GEMINI_MODEL"
   [[ -n "$_TIER_GEMINI_THINKING" ]] && GEMINI_THINKING="$_TIER_GEMINI_THINKING"
@@ -214,7 +214,7 @@ else
   # that the direct CLIs (gemini-3/openai-cli) cannot parse -- translate them to
   # direct model keys. Bridge backend leaves them unchanged.
   if [[ "${SYNOD_PROVIDER_BACKEND:-bridge}" == "direct" ]]; then
-    _PB="${PLUGIN_ROOT}/tools/provider_backend.py"
+    _PB="${TOOLS_DIR}/provider_backend.py"
     _G2=$(python3 "$_PB" --backend direct --provider gemini --translate-model "$GEMINI_MODEL" 2>/dev/null || true)
     _O2=$(python3 "$_PB" --backend direct --provider openai --translate-model "$OPENAI_MODEL" 2>/dev/null || true)
     [[ -n "$_G2" ]] && GEMINI_MODEL="$_G2"
