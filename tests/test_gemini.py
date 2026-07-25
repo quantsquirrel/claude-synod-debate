@@ -105,6 +105,10 @@ class TestThinkingLevelSelection:
         for level in gemini_cli.GeminiProvider.THINKING_MAP:
             assert level in gemini_cli.GeminiProvider.THINKING_LEVEL_MAP
 
+    @pytest.mark.skipif(
+        not gemini_cli.GeminiProvider.sdk_supports_thinking_level(),
+        reason="installed google-genai has no ThinkingConfig.thinking_level",
+    )
     def test_level_map_values_are_valid_api_enum_members(self):
         from google.genai import types
 
@@ -129,8 +133,40 @@ class TestThinkingLevelSelection:
         ],
     )
     def test_uses_thinking_level_per_model_family(self, model, expected):
-        assert gemini_cli.GeminiProvider.uses_thinking_level(model) is expected
+        assert gemini_cli.GeminiProvider.is_thinking_level_model(model) is expected
 
+    @pytest.mark.parametrize(
+        "model,expected",
+        [
+            ("gemini-pro-latest", True),
+            ("gemini-3.1-pro-preview", True),
+            ("gemini-2.5-pro", False),
+        ],
+    )
+    def test_uses_thinking_level_also_requires_sdk_support(self, model, expected):
+        """uses_thinking_level = model family AND installed-SDK capability.
+
+        On an SDK without the field it must be False for every model, otherwise
+        ThinkingConfig raises a pydantic ValidationError before any network call.
+        """
+        supported = gemini_cli.GeminiProvider.sdk_supports_thinking_level()
+        assert gemini_cli.GeminiProvider.uses_thinking_level(model) is (expected and supported)
+
+    def test_sdk_probe_matches_actual_construction_behaviour(self):
+        """The probe must agree with what ThinkingConfig actually accepts."""
+        from google.genai import types
+
+        try:
+            types.ThinkingConfig(thinking_level="HIGH")
+            constructible = True
+        except Exception:
+            constructible = False
+        assert gemini_cli.GeminiProvider.sdk_supports_thinking_level() is constructible
+
+    @pytest.mark.skipif(
+        not gemini_cli.GeminiProvider.sdk_supports_thinking_level(),
+        reason="installed google-genai has no ThinkingConfig.thinking_level",
+    )
     def test_build_config_emits_level_for_gemini_3(self):
         cfg = gemini_cli.GeminiProvider().build_thinking_config("high", use_level=True)
         assert cfg.thinking_level is not None
@@ -139,8 +175,13 @@ class TestThinkingLevelSelection:
     def test_build_config_emits_budget_for_legacy(self):
         cfg = gemini_cli.GeminiProvider().build_thinking_config("high", use_level=False)
         assert cfg.thinking_budget == 2000
-        assert cfg.thinking_level is None
+        # getattr, not attribute access: an older SDK has no thinking_level field.
+        assert getattr(cfg, "thinking_level", None) is None
 
+    @pytest.mark.skipif(
+        not gemini_cli.GeminiProvider.sdk_supports_thinking_level(),
+        reason="installed google-genai has no ThinkingConfig.thinking_level",
+    )
     def test_level_and_budget_are_never_set_together(self):
         """The API rejects both at once (400 INVALID_ARGUMENT)."""
         provider = gemini_cli.GeminiProvider()
@@ -148,6 +189,10 @@ class TestThinkingLevelSelection:
             cfg = provider.build_thinking_config("high", use_level=use_level)
             assert (cfg.thinking_level is None) != (cfg.thinking_budget is None)
 
+    @pytest.mark.skipif(
+        not gemini_cli.GeminiProvider.sdk_supports_thinking_level(),
+        reason="installed google-genai has no ThinkingConfig.thinking_level",
+    )
     def test_unknown_thinking_name_defaults_to_deepest_level(self):
         cfg = gemini_cli.GeminiProvider().build_thinking_config("bogus", use_level=True)
         assert cfg.thinking_level == "HIGH"
@@ -160,6 +205,14 @@ class TestThinkingArgErrorDetection:
         err = Exception(
             "400 INVALID_ARGUMENT. Invalid value at "
             "'generation_config.thinking_config.thinking_level'"
+        )
+        assert gemini_cli.GeminiProvider.is_thinking_arg_error(err) is True
+
+    def test_detects_sdk_validation_error(self):
+        """An old SDK rejects thinking_level at construction, not with a 400."""
+        err = Exception(
+            "1 validation error for ThinkingConfig\nthinking_level\n"
+            "  Extra inputs are not permitted [type=extra_forbidden, input_value='HIGH']"
         )
         assert gemini_cli.GeminiProvider.is_thinking_arg_error(err) is True
 
