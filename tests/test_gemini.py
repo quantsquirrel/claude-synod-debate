@@ -93,6 +93,86 @@ class TestThinkingMapping:
         assert gemini_cli.GeminiProvider.THINKING_MAP["max"] == 10000
 
 
+class TestThinkingLevelSelection:
+    """Gemini 3.x uses the native thinking_level enum, not thinking_budget.
+
+    thinking_budget saturates on 3.x (measured 2026-07-25 on gemini-3.1-pro-preview:
+    budget=2000 -> 5,766 thought tokens, budget=10000 -> 5,137), so only
+    thinking_level=HIGH reaches maximum reasoning depth (8,473 thought tokens).
+    """
+
+    def test_level_map_covers_every_thinking_choice(self):
+        for level in gemini_cli.GeminiProvider.THINKING_MAP:
+            assert level in gemini_cli.GeminiProvider.THINKING_LEVEL_MAP
+
+    def test_level_map_values_are_valid_api_enum_members(self):
+        from google.genai import types
+
+        valid = {member.value for member in types.ThinkingLevel}
+        for native in gemini_cli.GeminiProvider.THINKING_LEVEL_MAP.values():
+            assert native in valid
+
+    def test_max_collapses_to_high(self):
+        """The API has no level above HIGH; 'max' must not emit an invalid value."""
+        assert gemini_cli.GeminiProvider.THINKING_LEVEL_MAP["max"] == "HIGH"
+        assert gemini_cli.GeminiProvider.THINKING_LEVEL_MAP["high"] == "HIGH"
+
+    @pytest.mark.parametrize(
+        "model,expected",
+        [
+            ("gemini-pro-latest", True),  # what 'pro-latest' resolves to
+            ("gemini-3.1-pro-preview", True),
+            ("gemini-flash-latest", True),
+            ("gemini-3-flash-preview", True),
+            ("gemini-2.5-pro", False),  # legacy family: budget only
+            ("gemini-2.5-flash", False),
+        ],
+    )
+    def test_uses_thinking_level_per_model_family(self, model, expected):
+        assert gemini_cli.GeminiProvider.uses_thinking_level(model) is expected
+
+    def test_build_config_emits_level_for_gemini_3(self):
+        cfg = gemini_cli.GeminiProvider().build_thinking_config("high", use_level=True)
+        assert cfg.thinking_level is not None
+        assert cfg.thinking_budget is None
+
+    def test_build_config_emits_budget_for_legacy(self):
+        cfg = gemini_cli.GeminiProvider().build_thinking_config("high", use_level=False)
+        assert cfg.thinking_budget == 2000
+        assert cfg.thinking_level is None
+
+    def test_level_and_budget_are_never_set_together(self):
+        """The API rejects both at once (400 INVALID_ARGUMENT)."""
+        provider = gemini_cli.GeminiProvider()
+        for use_level in (True, False):
+            cfg = provider.build_thinking_config("high", use_level=use_level)
+            assert (cfg.thinking_level is None) != (cfg.thinking_budget is None)
+
+    def test_unknown_thinking_name_defaults_to_deepest_level(self):
+        cfg = gemini_cli.GeminiProvider().build_thinking_config("bogus", use_level=True)
+        assert cfg.thinking_level == "HIGH"
+
+
+class TestThinkingArgErrorDetection:
+    """Fallback trigger: only a thinking_level rejection may switch to budget."""
+
+    def test_detects_invalid_argument_on_thinking_level(self):
+        err = Exception(
+            "400 INVALID_ARGUMENT. Invalid value at "
+            "'generation_config.thinking_config.thinking_level'"
+        )
+        assert gemini_cli.GeminiProvider.is_thinking_arg_error(err) is True
+
+    def test_ignores_unrelated_errors(self):
+        for message in (
+            "429 RESOURCE_EXHAUSTED",
+            "504 DEADLINE_EXCEEDED",
+            "400 INVALID_ARGUMENT: bad temperature",
+            "thinking_level looks fine",  # no status code
+        ):
+            assert gemini_cli.GeminiProvider.is_thinking_arg_error(Exception(message)) is False
+
+
 class TestCreateClient:
     """Tests for create_client() function."""
 
@@ -114,9 +194,18 @@ class TestRetryLevels:
     """Tests for RETRY_LEVELS configuration."""
 
     def test_retry_levels_order(self):
-        """Test that retry levels are in descending order."""
+        """Test that retry levels are in descending order, starting at 'max'.
+
+        'max' must be included so a downgrade from the top level steps to 'high'
+        instead of falling through to index 1 ('medium' under the old list).
+        """
         levels = gemini_cli.GeminiProvider.RETRY_LEVELS
-        assert levels == ["high", "medium", "low", "minimal"]
+        assert levels == ["max", "high", "medium", "low", "minimal"]
+
+    def test_max_downgrades_one_step_to_high(self):
+        """A timeout at 'max' must degrade to 'high', not skip levels."""
+        levels = gemini_cli.GeminiProvider.RETRY_LEVELS
+        assert levels[levels.index("max") + 1] == "high"
 
     def test_all_retry_levels_in_thinking_map(self):
         """Test that all retry levels exist in THINKING_MAP."""

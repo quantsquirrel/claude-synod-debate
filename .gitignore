@@ -64,6 +64,11 @@ Thumbs.db
 htmlcov/
 coverage.xml
 
-# OMC / OMX state files
+# OMC / OMX / OMO state files
 .omc/
 .omx/
+.omo/
+
+# Agent + tooling scratch output
+.claude/eval/
+.playwright-mcp/

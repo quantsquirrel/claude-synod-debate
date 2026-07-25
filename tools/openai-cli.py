@@ -47,11 +47,18 @@ class OpenAIProvider(BaseProvider):
         "gpt5mini": "gpt-5-mini",
         "gpt54mini": "gpt-5.4-mini",
         "gpt55": "gpt-5.5",
+        "gpt56sol": "gpt-5.6-sol",
     }
     DEFAULT_MODEL = "gpt54mini"
 
     # Reasoning models support reasoning_effort
-    REASONING_MODELS = ["o3", "o4mini", "gpt54", "gpt5mini", "gpt54mini", "gpt55"]
+    REASONING_MODELS = ["o3", "o4mini", "gpt54", "gpt5mini", "gpt54mini", "gpt55", "gpt56sol"]
+
+    # Models that accept reasoning_effort='xhigh'. Probed against the live API
+    # (2026-07-25): gpt-5.6-sol / gpt-5.5 / gpt-5.4 / gpt-5.4-mini / o3 accept it;
+    # gpt-5-mini rejects it (supports minimal|low|medium|high) and gpt-4o takes no
+    # reasoning_effort at all. Requesting xhigh elsewhere is clamped to 'high'.
+    XHIGH_MODELS = ["gpt56sol", "gpt55", "gpt54", "gpt54mini", "o3"]
 
     # Timeout configuration (seconds). Values calibrated against measured p50/max latency
     # across 5-problem GSM8K-style A/B (2026-05-07): values are P50 × 30 to absorb tail.
@@ -77,10 +84,35 @@ class OpenAIProvider(BaseProvider):
         ("gpt55", "low"): 90,
         ("gpt55", "medium"): 120,
         ("gpt55", "high"): 180,
+        # gpt-5.6-sol measured on a hard reasoning prompt (2026-07-25):
+        #   low   ->  1,024 reasoning tokens /  31.6s
+        #   high  ->  6,656 reasoning tokens / 120.4s
+        #   xhigh -> 11,548 reasoning tokens / 190.6s
+        # Timeouts are the measured latency with headroom for the tail.
+        ("gpt56sol", "low"): 90,
+        ("gpt56sol", "medium"): 180,
+        ("gpt56sol", "high"): 240,
+        ("gpt56sol", "xhigh"): 360,
     }
 
-    # Reasoning levels for downgrade
-    REASONING_LEVELS = ["high", "medium", "low"]
+    # Reasoning levels for downgrade, deepest first.
+    REASONING_LEVELS = ["xhigh", "high", "medium", "low"]
+
+    @classmethod
+    def clamp_reasoning(cls, model_key: str, reasoning: str) -> str:
+        """Clamp 'xhigh' to 'high' for models that reject it.
+
+        Prevents a 400 (`reasoning_effort does not support 'xhigh' with this model`)
+        when a shared tier config asks for maximum effort on a model that caps at
+        'high' — the call degrades to the deepest supported level instead of failing.
+        """
+        if reasoning == "xhigh" and model_key not in cls.XHIGH_MODELS:
+            print(
+                f"[Clamp] {model_key} does not support reasoning_effort=xhigh - using high",
+                file=sys.stderr,
+            )
+            return "high"
+        return reasoning
 
     def get_timeout_ms(self, args, model_key: str, default_ms: int = 300_000) -> int:
         """Use model/reasoning-specific timeout defaults when no timeout is supplied."""
@@ -116,7 +148,7 @@ class OpenAIProvider(BaseProvider):
 
         # Add reasoning_effort for reasoning models
         if model_key in self.REASONING_MODELS:
-            request_params["reasoning_effort"] = reasoning
+            request_params["reasoning_effort"] = self.clamp_reasoning(model_key, reasoning)
 
         # Generate response
         response = client.chat.completions.create(**request_params)
@@ -131,16 +163,26 @@ class OpenAIProvider(BaseProvider):
         parser.add_argument(
             "--model",
             "-m",
-            choices=["gpt4o", "o3", "o4mini", "gpt54", "gpt5mini", "gpt54mini", "gpt55"],
+            choices=[
+                "gpt4o",
+                "o3",
+                "o4mini",
+                "gpt54",
+                "gpt5mini",
+                "gpt54mini",
+                "gpt55",
+                "gpt56sol",
+            ],
             default="gpt54mini",
             help="사용할 모델 (기본값: gpt54mini)",
         )
         parser.add_argument(
             "--reasoning",
             "-r",
-            choices=["low", "medium", "high"],
+            choices=["low", "medium", "high", "xhigh"],
             default="medium",
-            help="Reasoning 레벨 - reasoning 지원 모델 전용 (기본값: medium)",
+            help="Reasoning 레벨 - reasoning 지원 모델 전용 (기본값: medium). "
+            "xhigh는 XHIGH_MODELS만 지원하며, 그 외 모델에서는 high로 clamp됩니다.",
         )
         parser.add_argument(
             "--no-adaptive",

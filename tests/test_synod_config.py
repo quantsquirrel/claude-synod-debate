@@ -72,13 +72,14 @@ def test_get_mode_config_unknown_falls_back_to_general():
 def test_get_model_config_gemini_review():
     """Test get_model_config for gemini in review mode."""
     config = get_model_config("review", "gemini")
-    assert config == {"model": "3.5-flash", "thinking": "high"}
+    # Mode defaults carry thinking "low"; only the deep/ultra tier raises it.
+    assert config == {"model": "pro-latest", "thinking": "low"}
 
 
 def test_get_model_config_openai_design():
     """Test get_model_config for openai in design mode."""
     config = get_model_config("design", "openai")
-    assert config == {"model": "gpt55fast", "reasoning": None}
+    assert config == {"model": "gpt56sol", "reasoning": "low"}
 
 
 def test_get_focus_returns_string():
@@ -263,7 +264,7 @@ def test_config_cli_nested_path(capsys):
     sys.argv = ["synod_config.py", "modes", "review", "models", "gemini", "model"]
     main()
     captured = capsys.readouterr()
-    assert captured.out.strip() == "3.5-flash"
+    assert captured.out.strip() == "pro-latest"
 
 
 def test_config_cli_json_output(capsys):

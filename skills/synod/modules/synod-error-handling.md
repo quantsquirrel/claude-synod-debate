@@ -19,16 +19,20 @@
 ## Timeout Fallback Chain
 
 ### If Gemini times out (MODEL_TIMEOUT, default 180s):
-1. Retry: `$GEMINI_CLI --model 3.5-flash --thinking medium` (compat flag)
-2. Retry: `$GEMINI_CLI --model 3.5-flash --thinking low` (compat flag)
-3. Legacy fallback if `agy-cli` is unavailable and `gemini-3` still works locally: `$LEGACY_GEMINI_CLI --model flash --thinking low`
+Reducing `--thinking` is the effective lever here: it directly cuts thought tokens
+and therefore latency (`high` ≈ 75s vs `low` ≈ 30s, measured on a hard prompt).
+`gemini-3.py` already walks `max→high→medium→low→minimal` internally on timeout.
+1. Retry: `$GEMINI_CLI --model pro-latest --thinking medium`
+2. Retry: `$GEMINI_CLI --model pro-latest --thinking low`
+3. Retry a cheaper family: `$GEMINI_CLI --model flash-latest --thinking low`
 4. Final: Continue without Gemini, note in synthesis: "[Gemini 사용 불가 - 시간 초과]"
 
 ### If OpenAI times out (MODEL_TIMEOUT, default 180s):
-1. Retry: `$OPENAI_CLI --model gpt55fast`
+`--reasoning` is the equivalent lever (`xhigh` ≈ 191s, `high` ≈ 120s, `low` ≈ 32s
+on gpt-5.6-sol). `openai-cli.py` walks `xhigh→high→medium→low` internally on timeout.
+1. Retry: `$OPENAI_CLI --model gpt56sol --reasoning medium`
 2. Retry: `$OPENAI_CLI --model gpt54mini`
-3. Legacy fallback if `cliproxy-cli` is unavailable and direct OpenAI credentials still work: `$LEGACY_OPENAI_CLI --model gpt54mini`
-4. Final: Continue without OpenAI, note in synthesis: "[OpenAI 사용 불가 - 시간 초과]"
+3. Final: Continue without OpenAI, note in synthesis: "[OpenAI 사용 불가 - 시간 초과]"
 
 ### Extended Provider Fallbacks:
 
@@ -127,7 +131,7 @@ Add to `meta.json` when errors occur:
       "round": 1,
       "provider": "gemini",
       "type": "timeout",
-      "fallback_used": "3.5-flash-medium",
+      "fallback_used": "pro-latest-low",
       "timestamp": "{ISO_TIMESTAMP}"
     }
   ]

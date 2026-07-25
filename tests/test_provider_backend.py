@@ -25,8 +25,14 @@ BackendResolutionError = provider_backend.BackendResolutionError
 
 
 class TestGetBackend:
-    def test_default_is_bridge(self, monkeypatch):
+    def test_default_is_direct(self, monkeypatch):
+        """The agy/cliproxy bridges expired ~2026-06-30; direct is the default."""
         monkeypatch.delenv(provider_backend.BACKEND_ENV, raising=False)
+        assert get_backend() == DIRECT
+
+    def test_env_bridge_still_selectable(self, monkeypatch):
+        """Bridge stays reachable for recovery on an old roster."""
+        monkeypatch.setenv(provider_backend.BACKEND_ENV, "bridge")
         assert get_backend() == BRIDGE
 
     def test_env_direct(self, monkeypatch):
@@ -41,13 +47,14 @@ class TestGetBackend:
         monkeypatch.setenv(provider_backend.BACKEND_ENV, "direct")
         assert get_backend("bridge") == BRIDGE
 
-    def test_unknown_value_falls_back_to_bridge(self, monkeypatch):
+    def test_unknown_value_falls_back_to_direct(self, monkeypatch):
+        """A typo must never route through the retired bridges."""
         monkeypatch.setenv(provider_backend.BACKEND_ENV, "gibberish")
-        assert get_backend() == BRIDGE
+        assert get_backend() == DIRECT
 
-    def test_unknown_explicit_falls_back_to_bridge(self, monkeypatch):
+    def test_unknown_explicit_falls_back_to_direct(self, monkeypatch):
         monkeypatch.delenv(provider_backend.BACKEND_ENV, raising=False)
-        assert get_backend("nonsense") == BRIDGE
+        assert get_backend("nonsense") == DIRECT
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +118,35 @@ class TestResolveEntryDirect:
         resolve_entry(entry, DIRECT)
         assert entry["cli"] == "agy-cli"
         assert entry["model"] == "3.5-flash"
+
+
+class TestResolveDirectAuthoredEntryIsIdempotent:
+    """The matrix is authored in direct vocabulary, so direct resolution is a no-op.
+
+    Without identity entries in DIRECT_MODEL this raises BackendResolutionError and
+    every tier lookup fails at runtime.
+    """
+
+    @pytest.mark.parametrize("model", ["pro-latest", "flash-latest", "flash-lite-latest"])
+    def test_gemini_direct_models_map_to_themselves(self, model):
+        entry = {"provider": "gemini", "cli": "gemini-3", "model": model, "thinking": "high"}
+        out = resolve_entry(entry, DIRECT)
+        assert out["cli"] == "gemini-3"
+        assert out["model"] == model
+        assert out["thinking"] == "high"
+
+    def test_resolving_twice_is_stable(self):
+        entry = {"provider": "gemini", "cli": "gemini-3", "model": "pro-latest"}
+        once = resolve_entry(entry, DIRECT)
+        twice = resolve_entry(once, DIRECT)
+        assert twice["model"] == once["model"] == "pro-latest"
+        assert twice["cli"] == once["cli"] == "gemini-3"
+
+    def test_retired_bridge_keys_still_resolve(self):
+        """An old bridge-authored roster must not become unusable."""
+        assert provider_backend.translate_model("gemini", "3.1-pro", DIRECT) == "pro-latest"
+        assert provider_backend.translate_model("gemini", "3.5-flash", DIRECT) == "flash-latest"
+        assert provider_backend.translate_model("openai", "gpt55fast", DIRECT) == "gpt55"
 
 
 # ---------------------------------------------------------------------------
@@ -255,11 +291,11 @@ class TestPhase1RosterShape:
         for tier, roster in matrix["tiers"].items():
             resolved = resolve_roster(roster, DIRECT)
             by = self._by_provider(resolved)
-            assert by["gemini"]["model"] == "flash-latest", tier
+            assert by["gemini"]["model"] == "pro-latest", tier
             assert by["gemini"]["cli"] == "gemini-3", tier
             assert by["openai"]["cli"] == "openai-cli", tier
-            # openai model must be a direct key (gpt55 / gpt54mini)
-            assert by["openai"]["model"] in ("gpt55", "gpt54mini"), tier
+            # openai model must be a direct key
+            assert by["openai"]["model"] in ("gpt56sol", "gpt55", "gpt54mini"), tier
 
 
 # ---------------------------------------------------------------------------

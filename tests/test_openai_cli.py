@@ -5,6 +5,8 @@ Tests for openai-cli.py - OpenAI API client with retry logic.
 import os
 import sys
 
+import pytest
+
 # Add tools directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
@@ -107,13 +109,69 @@ class TestTimeoutConfig:
         assert provider.get_timeout_ms(args, args.model) == 45_000
 
 
+class TestXHighClamp:
+    """xhigh must only reach models that accept it.
+
+    Probed live 2026-07-25: gpt-5.6-sol / gpt-5.5 / gpt-5.4 / gpt-5.4-mini / o3
+    accept reasoning_effort='xhigh'; gpt-5-mini rejects it with a 400 (supports
+    minimal|low|medium|high) and gpt-4o takes no reasoning_effort at all.
+    """
+
+    def test_gpt56sol_is_registered(self):
+        assert openai_cli.OpenAIProvider.MODEL_MAP["gpt56sol"] == "gpt-5.6-sol"
+        assert "gpt56sol" in openai_cli.OpenAIProvider.REASONING_MODELS
+
+    def test_xhigh_models_are_all_reasoning_models(self):
+        for key in openai_cli.OpenAIProvider.XHIGH_MODELS:
+            assert key in openai_cli.OpenAIProvider.REASONING_MODELS
+            assert key in openai_cli.OpenAIProvider.MODEL_MAP
+
+    @pytest.mark.parametrize("model_key", ["gpt56sol", "gpt55", "gpt54", "gpt54mini", "o3"])
+    def test_xhigh_passes_through_for_supported_models(self, model_key):
+        assert openai_cli.OpenAIProvider.clamp_reasoning(model_key, "xhigh") == "xhigh"
+
+    @pytest.mark.parametrize("model_key", ["gpt5mini", "o4mini"])
+    def test_xhigh_clamps_to_high_for_unsupported_models(self, model_key):
+        assert openai_cli.OpenAIProvider.clamp_reasoning(model_key, "high") == "high"
+        assert openai_cli.OpenAIProvider.clamp_reasoning(model_key, "xhigh") == "high"
+
+    @pytest.mark.parametrize("level", ["low", "medium", "high"])
+    def test_non_xhigh_levels_are_never_altered(self, level):
+        for model_key in ["gpt56sol", "gpt5mini", "o3"]:
+            assert openai_cli.OpenAIProvider.clamp_reasoning(model_key, level) == level
+
+    def test_gpt56sol_has_timeout_for_every_reasoning_level(self):
+        cfg = openai_cli.OpenAIProvider.TIMEOUT_CONFIG
+        for level in openai_cli.OpenAIProvider.REASONING_LEVELS:
+            assert ("gpt56sol", level) in cfg, level
+
+    def test_gpt56sol_timeouts_increase_with_depth(self):
+        """Deeper effort costs more wall clock, so the ceiling must rise with it."""
+        cfg = openai_cli.OpenAIProvider.TIMEOUT_CONFIG
+        assert (
+            cfg[("gpt56sol", "low")]
+            < cfg[("gpt56sol", "medium")]
+            <= cfg[("gpt56sol", "high")]
+            < cfg[("gpt56sol", "xhigh")]
+        )
+
+    def test_gpt56sol_xhigh_timeout_covers_measured_latency(self):
+        """xhigh measured at 190.6s — the ceiling must exceed it with headroom."""
+        assert openai_cli.OpenAIProvider.TIMEOUT_CONFIG[("gpt56sol", "xhigh")] > 190
+
+
 class TestReasoningLevels:
     """Tests for REASONING_LEVELS configuration."""
 
     def test_reasoning_levels_order(self):
-        """Test that reasoning levels are in descending order."""
+        """Test that reasoning levels are in descending order, deepest first."""
         levels = openai_cli.OpenAIProvider.REASONING_LEVELS
-        assert levels == ["high", "medium", "low"]
+        assert levels == ["xhigh", "high", "medium", "low"]
+
+    def test_xhigh_downgrades_one_step_to_high(self):
+        """A timeout at 'xhigh' must degrade to 'high', not skip levels."""
+        levels = openai_cli.OpenAIProvider.REASONING_LEVELS
+        assert levels[levels.index("xhigh") + 1] == "high"
 
 
 class TestCreateClient:
@@ -144,7 +202,15 @@ class TestGenerateWithRetry:
     def test_o_series_includes_reasoning_effort(self):
         """Test that reasoning-capable models are in REASONING_MODELS."""
         for model in openai_cli.OpenAIProvider.REASONING_MODELS:
-            assert model in ["o3", "o4mini", "gpt54", "gpt5mini", "gpt54mini", "gpt55"]
+            assert model in [
+                "o3",
+                "o4mini",
+                "gpt54",
+                "gpt5mini",
+                "gpt54mini",
+                "gpt55",
+                "gpt56sol",
+            ]
 
     def test_gpt4o_excludes_reasoning_effort(self):
         """Test that gpt4o should not use reasoning_effort."""

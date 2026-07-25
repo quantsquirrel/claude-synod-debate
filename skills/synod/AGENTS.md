@@ -46,11 +46,11 @@ allowed-tools: [Read, Write, Bash, Glob, Grep, Task]
 
 | Mode | Use Case | Gemini Model | OpenAI Model | Rounds | Temperature |
 |------|----------|--------------|--------------|--------|-------------|
-| `review` | Code review and static analysis | Gemini 3.5 Flash (agy-cli) | gpt55fast via CLIProxyAPI | 3 | wrapper-controlled |
-| `design` | Architecture and system design decisions | Gemini 3.5 Flash (agy-cli) | gpt55fast via CLIProxyAPI | 4 | wrapper-controlled |
-| `debug` | Debugging, troubleshooting, root cause analysis | Gemini 3.5 Flash (agy-cli) | gpt55fast via CLIProxyAPI | 3 | wrapper-controlled |
-| `idea` | Brainstorming, ideation, concept exploration | Gemini 3.5 Flash (agy-cli) | gpt55fast via CLIProxyAPI | 4 | wrapper-controlled |
-| `general` | General questions, explanations, comparisons | Gemini 3.5 Flash (agy-cli) | gpt55fast via CLIProxyAPI | 3 | wrapper-controlled |
+| `review` | Code review and static analysis | Gemini 3.1 Pro (`gemini-3` `pro-latest`) | gpt-5.6-sol (`openai-cli` `gpt56sol`) | 3 | wrapper-controlled |
+| `design` | Architecture and system design decisions | Gemini 3.1 Pro (`gemini-3` `pro-latest`) | gpt-5.6-sol (`openai-cli` `gpt56sol`) | 4 | wrapper-controlled |
+| `debug` | Debugging, troubleshooting, root cause analysis | Gemini 3.1 Pro (`gemini-3` `pro-latest`) | gpt-5.6-sol (`openai-cli` `gpt56sol`) | 3 | wrapper-controlled |
+| `idea` | Brainstorming, ideation, concept exploration | Gemini 3.1 Pro (`gemini-3` `pro-latest`) | gpt-5.6-sol (`openai-cli` `gpt56sol`) | 4 | wrapper-controlled |
+| `general` | General questions, explanations, comparisons | Gemini 3.1 Pro (`gemini-3` `pro-latest`) | gpt-5.6-sol (`openai-cli` `gpt56sol`) | 3 | wrapper-controlled |
 
 #### Model Personas
 
@@ -191,7 +191,7 @@ Resume preserves:
 
 **Timeout Fallback Chain:**
 1. Retry with downgraded thinking/reasoning level
-2. Retry with lower model tier (same agy Gemini 3.5 Flash family; CLIProxy gpt54mini instead of gpt55fast)
+2. Retry at lower reasoning depth (`--thinking medium`/`low` on pro-latest; `--reasoning high`/`medium` on gpt56sol)
 3. Continue without model if retries exhausted (note in synthesis)
 
 **Format Enforcement:**
@@ -212,13 +212,13 @@ Resume preserves:
 
 #### Configuration Requirements
 
-**Required Local Services:**
+**Required API keys:**
 ```bash
-agy --version                  # Antigravity CLI is installed and logged in
-lsof -nP -iTCP:8317 -sTCP:LISTEN  # CLIProxyAPI is listening locally
+python3 tools/cutover_check.py   # validates rosters, CLI model keys, and both keys
 ```
 
-`CLIPROXY_API_KEY` is optional when the local proxy uses Synod's default local key.
+`GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and `OPENAI_API_KEY` are both required.
+Resolution order per key: environment → `~/.synod/.env` → macOS Keychain.
 
 **Optional:**
 ```bash
@@ -235,8 +235,9 @@ export SYNOD_SESSION_DIR="~/.synod/sessions"  # Default: ~/.synod/sessions
 
 | Tool | Purpose | Fallback |
 |------|---------|----------|
-| `agy-cli` | Antigravity wrapper pinned to Gemini 3.5 Flash family | Keeps current 3.5 Flash strength or pins to Medium |
-| `cliproxy-cli` | CLIProxyAPI OpenAI-compatible wrapper | Legacy o3/gpt4o aliases map to gpt55fast |
+| `gemini-3` | Direct Gemini API wrapper | `pro-latest` = Gemini 3.1 Pro; `--thinking` maps to native `thinking_level` |
+| `openai-cli` | Direct OpenAI API wrapper | `gpt56sol` = gpt-5.6-sol; `--reasoning low\|medium\|high\|xhigh` (clamped to high where unsupported) |
+| `agy-cli` / `cliproxy-cli` | Retired bridges (expired ~2026-06-30) | Recovery only via `SYNOD_PROVIDER_BACKEND=bridge` |
 | `gemini-3` | Legacy direct Gemini API wrapper | Last-ditch fallback/reference only |
 | `openai-cli` | Legacy direct OpenAI API wrapper | Last-ditch fallback/reference only |
 | `synod-parser` | Parse confidence scores and semantic focus | Inline parser fallback |
@@ -300,7 +301,7 @@ allowed-tools: [Read, Write, Bash, Glob]
 Cancels the currently active Synod session:
 
 1. **Find Active Session:** Searches `${SYNOD_SESSION_DIR:-~/.synod/sessions}` for sessions with status != "complete"
-2. **Kill Processes:** Terminates any background processes (agy-cli, cliproxy-cli, legacy gemini-3/openai-cli)
+2. **Kill Processes:** Terminates any background processes (gemini-3, openai-cli, retired agy-cli/cliproxy-cli)
 3. **Update Status:** Marks session status as "cancelled" in status.json
 4. **Preserve State:** All completed round data retained for audit/resumption
 
@@ -377,8 +378,8 @@ Skills depend on tools in `../tools/`:
 | Tool | Location | Purpose |
 |------|----------|---------|
 | `synod-parser.py` | `../tools/synod-parser.py` | Parse confidence scores, calculate Trust Scores |
-| `agy-cli` | `../tools/agy-cli` | Antigravity Gemini 3.5 Flash wrapper |
-| `cliproxy-cli.py` | `../tools/cliproxy-cli.py` | CLIProxyAPI integration wrapper |
+| `agy-cli` | `../tools/agy-cli` | Retired Antigravity bridge |
+| `cliproxy-cli.py` | `../tools/cliproxy-cli.py` | Retired CLIProxyAPI bridge |
 | `gemini-3.py` | `../tools/gemini-3.py` | Legacy direct Gemini fallback/reference |
 | `openai-cli.py` | `../tools/openai-cli.py` | Legacy direct OpenAI fallback/reference |
 
@@ -389,7 +390,7 @@ Defined in `../plugin.json`:
 ```json
 {
   "skills": ["synod", "cancel-synod"],
-  "tools": ["synod-parser.py", "agy-cli", "cliproxy-cli.py", "gemini-3.py", "openai-cli.py"],
+  "tools": ["synod-parser.py", "gemini-3.py", "openai-cli.py", "agy-cli", "cliproxy-cli.py"],
   "config": {
     "CLIPROXY_API_KEY": {"required": false},
     "SYNOD_SESSION_DIR": {"required": false, "default": "~/.synod/sessions"}
@@ -503,8 +504,8 @@ cat ~/.synod/sessions/synod-YYYYMMDD-HHMMSS-xxx/round-2-critic/trust-scores.json
 - Fix: Provide actual content to `/synod` command
 
 **"API key not found"**
-- Cause: agy not logged in or CLIProxyAPI is not listening on port 8317
-- Fix: log in to Antigravity CLI and start CLIProxyAPI; set `CLIPROXY_API_KEY` only if the proxy uses a custom key
+- Cause: `GEMINI_API_KEY`/`GOOGLE_API_KEY` or `OPENAI_API_KEY` is unset
+- Fix: export `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and `OPENAI_API_KEY`; verify with `python3 tools/cutover_check.py`
 
 **"Timeout after 3 retries"**
 - Cause: Model API not responding

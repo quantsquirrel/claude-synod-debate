@@ -29,16 +29,17 @@ SYNOD_DIR = Path("~/.synod").expanduser()
 SYNOD_BIN = SYNOD_DIR / "bin"
 
 # CLI wrapper targets: command_name -> script_filename
+# The direct API-key CLIs are primary; the agy/cliproxy bridges expired ~2026-06-30.
 PRIMARY_CLI_TOOLS = {
-    "agy-cli": "agy-cli",
-    "cliproxy-cli": "cliproxy-cli.py",
-}
-
-# Legacy direct-API CLIs are not default test targets, but they remain installed
-# as last-ditch fallbacks for older sessions/configs and manual recovery.
-LEGACY_FALLBACK_CLI_TOOLS = {
     "gemini-3": "gemini-3.py",
     "openai-cli": "openai-cli.py",
+}
+
+# Retired bridge CLIs are not test targets, but they remain installed as
+# last-ditch fallbacks for older sessions/configs and manual recovery.
+LEGACY_FALLBACK_CLI_TOOLS = {
+    "agy-cli": "agy-cli",
+    "cliproxy-cli": "cliproxy-cli.py",
 }
 
 CLI_TOOLS = {
@@ -53,32 +54,32 @@ CLI_TOOLS = {
     "synod-classifier": "synod-classifier.py",
 }
 
-# Required Python packages for primary Synod routing.
+# Required Python packages for primary Synod routing. google-genai is required
+# again now that the Gemini lane talks to the vendor API directly via gemini-3.py.
 REQUIRED_PACKAGES = {
+    "google-genai": "google.genai",
     "openai": "openai",
     "httpx": "httpx",
 }
 
-# Optional packages for legacy fallback wrappers. Setup does not force-install
-# these because the primary path no longer depends on direct Gemini/OpenAI APIs.
-OPTIONAL_FALLBACK_PACKAGES = {
-    "google-genai": "google.genai",
-}
+# Optional packages for the retired bridge wrappers. Nothing extra is needed
+# today — the bridges reuse base_provider and the packages above.
+OPTIONAL_FALLBACK_PACKAGES: dict[str, str] = {}
 
 # Provider definitions for testing
 MODELS_TO_TEST: dict[str, dict[str, Any]] = {
     "gemini": {
-        "cli": "agy-cli",
-        "models": ["3.5-flash"],
-        "env_key": None,
-        "auth_note": "Antigravity OAuth/session",
+        "cli": "gemini-3.py",
+        "models": ["pro-latest"],
+        "env_key": "GEMINI_API_KEY",
+        "env_key_compat": "GOOGLE_API_KEY",
+        "auth_note": "Gemini API key (gemini-pro-latest → gemini-3.1-pro)",
     },
     "openai": {
-        "cli": "cliproxy-cli.py",
-        "models": ["gpt55fast"],
-        "env_key": "CLIPROXY_API_KEY",
-        "optional_env_key": True,
-        "auth_note": "CLIProxyAPI localhost:8317",
+        "cli": "openai-cli.py",
+        "models": ["gpt56sol"],
+        "env_key": "OPENAI_API_KEY",
+        "auth_note": "OpenAI API key",
     },
     "deepseek": {
         "cli": "deepseek-cli.py",
@@ -108,8 +109,8 @@ MODELS_TO_TEST: dict[str, dict[str, Any]] = {
 }
 
 TEST_TARGETS = [
-    ("gemini", "3.5-flash"),
-    ("openai", "gpt55fast"),
+    ("gemini", "pro-latest"),
+    ("openai", "gpt56sol"),
     ("openrouter", "claude"),
 ]
 

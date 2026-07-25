@@ -23,12 +23,15 @@ user-invocable: true
      done
      ```
 2. Kill worker processes scoped to the active session's tmp directory.
-   Phase 1 invokes CLIs as `run_cli "$GEMINI_CLI" ... < "${SESSION_DIR}/tmp/gemini-prompt.txt"` — the word "synod" never appears in their argv, so patterns like `pkill -f "agy-cli.*synod"` are no-ops. Instead, target processes whose command line references the session-specific tmp path:
+   Phase 1 invokes CLIs as `run_cli "$GEMINI_CLI" ... < "${SESSION_DIR}/tmp/gemini-prompt.txt"` — the word "synod" never appears in their argv, so patterns like `pkill -f "gemini-3.*synod"` are no-ops. Instead, target processes whose command line references the session-specific tmp path:
    ```bash
    if [[ -n "$ACTIVE_SESSION" ]]; then
      SESSION_TMP="${ACTIVE_SESSION}/tmp"
-     # Kill agy-cli or cliproxy-cli processes reading from this session's tmp files.
+     # Kill provider CLI processes reading from this session's tmp files.
      # Scope the match to the session path to avoid killing unrelated user processes.
+     pkill -f "gemini-3.*${SESSION_TMP}" 2>/dev/null || true
+     pkill -f "openai-cli.*${SESSION_TMP}" 2>/dev/null || true
+     # Retired bridge lanes, still matched in case SYNOD_PROVIDER_BACKEND=bridge.
      pkill -f "agy-cli.*${SESSION_TMP}" 2>/dev/null || true
      pkill -f "cliproxy-cli.*${SESSION_TMP}" 2>/dev/null || true
      # Fallback: terminate any process with an open file under the session tmp dir.
