@@ -23,11 +23,12 @@
 - `${SESSION_DIR}/round-1-solver/parsed-signals.json`
 - Updated `status.json` with round 1 complete
 
-**Default CLI wiring:** `$GEMINI_CLI` resolves to `agy-cli` (Antigravity Gemini
-3.5 Flash family). `$OPENAI_CLI` resolves to `cliproxy-cli` (CLIProxyAPI on
-localhost:8317). Historical `--model`, `--thinking`, and `--reasoning` flags
-are still passed for compatibility; the wrappers normalize them to the current
-runtime defaults.
+**Default CLI wiring:** `$GEMINI_CLI` resolves to `gemini-3` (`GEMINI_API_KEY`,
+model `pro-latest` = `gemini-pro-latest` → currently `gemini-3.1-pro-preview`).
+`$OPENAI_CLI` resolves to `openai-cli` (`OPENAI_API_KEY`, model `gpt56sol`). Unlike
+the retired bridges, these CLIs *honour* `--model`, `--thinking`, and
+`--reasoning` rather than normalizing them away — so the tier's `thinking` value
+directly controls reasoning depth (and therefore latency).
 
 **Cross-references:**
 - Called after Phase 0 (`synod-phase0-setup.md`)
@@ -188,9 +189,9 @@ tier-aware timeouts and emit progress events:
 ```bash
 # --- v3.6.2: Consume SYNOD_MODEL_OVERRIDES from Phase 0.5 (evidence-first tier roster) ---
 # tier_matrix.py emits {tier, backend, models:[{provider,cli,model,thinking|reasoning}]}.
-# The roster is ALREADY backend-resolved by provider_backend (bridge identity, or
-# direct with cli/model rewritten e.g. 3.5-flash->flash-latest), so model/thinking/
-# reasoning here are runtime-ready and need no further translation.
+# The roster is ALREADY backend-resolved by provider_backend (direct is now the
+# default and the matrix is authored in direct vocabulary, so resolution is an
+# identity map), so model/thinking/reasoning here are runtime-ready.
 _ov() { echo "$SYNOD_MODEL_OVERRIDES" | python3 -c "$1" 2>/dev/null || true; }
 if [[ -n "${SYNOD_MODEL_OVERRIDES:-}" ]]; then
   _G="import json,sys;by={m.get('provider'):m for m in json.load(sys.stdin).get('models',[])};print(by.get('gemini',{}).get"
@@ -207,13 +208,14 @@ if [[ -n "${SYNOD_MODEL_OVERRIDES:-}" ]]; then
   [[ -n "$_TIER_OPENAI_MODEL"    ]] && OPENAI_MODEL="$_TIER_OPENAI_MODEL"
   [[ -n "$_TIER_OPENAI_REASONING" ]] && OPENAI_REASONING="$_TIER_OPENAI_REASONING"
 
-  echo "[Phase 1] SYNOD_MODEL_OVERRIDES applied: tier=${_TIER_NAME:-unknown} backend=${_TIER_BACKEND:-bridge}" >&2
+  echo "[Phase 1] SYNOD_MODEL_OVERRIDES applied: tier=${_TIER_NAME:-unknown} backend=${_TIER_BACKEND:-direct}" >&2
 else
-  # No tier roster (default /synod path). When the direct backend is active, the
-  # mode-default model strings are bridge vocabulary (e.g. 3.5-flash, gpt55fast)
-  # that the direct CLIs (gemini-3/openai-cli) cannot parse -- translate them to
-  # direct model keys. Bridge backend leaves them unchanged.
-  if [[ "${SYNOD_PROVIDER_BACKEND:-bridge}" == "direct" ]]; then
+  # No tier roster (default /synod path). Mode defaults in synod-modes.yaml are
+  # authored in direct vocabulary (pro-latest/gpt56sol), so this translation is an
+  # identity map today. It is kept so an older bridge-vocabulary config (3.1-pro,
+  # gpt55fast) still reaches a model string the direct CLIs can parse.
+  # The :-direct default MUST match provider_backend.DEFAULT_BACKEND.
+  if [[ "${SYNOD_PROVIDER_BACKEND:-direct}" != "bridge" ]]; then
     _PB="${TOOLS_DIR}/provider_backend.py"
     _G2=$(python3 "$_PB" --backend direct --provider gemini --translate-model "$GEMINI_MODEL" 2>/dev/null || true)
     _O2=$(python3 "$_PB" --backend direct --provider openai --translate-model "$OPENAI_MODEL" 2>/dev/null || true)

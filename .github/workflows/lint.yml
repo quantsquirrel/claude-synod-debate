@@ -25,7 +25,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ruff
+        # Pinned: an unpinned ruff silently changes what "formatted" means and
+        # fails unrelated PRs. 0.16 additionally formats Python code blocks inside
+        # Markdown, which this repo has not been through yet — adopting it is a
+        # separate, repo-wide formatting pass.
+        pip install 'ruff==0.15.12'
 
     - name: Run ruff check
       run: |

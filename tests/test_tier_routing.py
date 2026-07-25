@@ -87,20 +87,23 @@ class TestTierConfig:
         assert get_tier("") == "standard"
 
     def test_get_tier_config_fast(self):
-        """fast tier config keeps Gemini 3.5 Flash and uses CLIProxy mini."""
+        """fast tier stays on pro-latest at shallow depth to fit its 60s ceiling."""
         from tools.synod_config import get_tier_config
 
         config = get_tier_config("fast")
-        assert config["gemini"]["model"] == "3.5-flash"
+        assert config["gemini"]["model"] == "pro-latest"
+        assert config["gemini"]["thinking"] == "low"
         assert config["openai"]["model"] == "gpt54mini"
 
     def test_get_tier_config_deep(self):
-        """deep tier config keeps Gemini 3.5 Flash and uses CLIProxy gpt55fast."""
+        """deep tier buys maximum reasoning depth: thinking high on pro-latest."""
         from tools.synod_config import get_tier_config
 
         config = get_tier_config("deep")
-        assert config["gemini"]["model"] == "3.5-flash"
-        assert config["openai"]["model"] == "gpt55fast"
+        assert config["gemini"]["model"] == "pro-latest"
+        assert config["gemini"]["thinking"] == "high"
+        assert config["openai"]["model"] == "gpt56sol"
+        assert config["openai"]["reasoning"] == "high"
 
     def test_get_tier_config_standard_has_no_model_overrides(self):
         """standard tier has description but no model overrides."""
@@ -144,10 +147,10 @@ class TestTierConfig:
         """Tier config merges thinking/reasoning into mode config."""
         from tools.synod_config import get_tiered_model_config
 
-        # general mode gemini: 3.5-flash, thinking medium
-        # deep tier gemini: same model family, thinking high
+        # general mode gemini: pro-latest, thinking low
+        # deep tier overrides thinking to high (same model family)
         config = get_tiered_model_config("general", "gemini", "deep")
-        assert config["model"] == "3.5-flash"
+        assert config["model"] == "pro-latest"
         assert config["thinking"] == "high"
 
     # --- Confidence-to-Tier Linkage (v3.2) ---

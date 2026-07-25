@@ -40,10 +40,10 @@ Phase 0.5 closes that gap with three cheap mechanical checks:
    (`default X`, `providers/ 추상화`, `22/22 regression green`). High-severity
    findings gate Phase 1 unless the user passes `--skip-lint`.
 3. **Tier Selection** — replace latency-based "recommended" defaults with an
-   explicit tier → model roster mapping (`config/model_matrix.json`). The
-   Gemini lane remains pinned to Antigravity Gemini 3.5 Flash, while the
-   OpenAI lane uses CLIProxyAPI aliases instead of being silently demoted for
-   latency.
+   explicit tier → model roster mapping (`config/model_matrix.json`). Both lanes
+   run direct on the user's own API keys: Gemini on `pro-latest`
+   (= `gemini-3.1-pro`) and OpenAI on `gpt56sol` (= gpt-5.6-sol), with reasoning depth set by tier
+   rather than a model being silently demoted for latency.
 
 ## Step 0.5.1 — Ground-Truth Probe (conditional)
 

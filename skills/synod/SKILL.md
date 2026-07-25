@@ -109,29 +109,30 @@ ELSE:
         fi
     }
 
-    LEGACY_GEMINI_CLI=$(resolve_cli "gemini-3" || true)
-    LEGACY_OPENAI_CLI=$(resolve_cli "openai-cli" || true)
+    # Retired bridge lanes, resolved only so SYNOD_PROVIDER_BACKEND=bridge works.
+    BRIDGE_GEMINI_CLI=$(resolve_cli "agy-cli" || true)
+    BRIDGE_OPENAI_CLI=$(resolve_cli "cliproxy-cli" || true)
 
-    # Backend selection (v3.6.2). SYNOD_PROVIDER_BACKEND controls which CLI lane
+    # Backend selection (v3.6.3). SYNOD_PROVIDER_BACKEND controls which CLI lane
     # is preferred:
-    #   bridge (default) — agy-cli/cliproxy-cli first, direct CLIs as fallback.
-    #   direct           — gemini-3/openai-cli FIRST (durable, post-cutover lane).
-    # The matching model translation happens in Phase 1 (provider_backend.py):
-    # direct rewrites the mode-default bridge model strings (3.5-flash, gpt55fast)
-    # to direct keys (flash-latest, gpt55). Keep this in sync with that step.
-    if [[ "${SYNOD_PROVIDER_BACKEND:-bridge}" == "direct" ]]; then
-        GEMINI_CLI=$(resolve_cli "gemini-3")
-        OPENAI_CLI=$(resolve_cli "openai-cli")
-        echo "[Synod] SYNOD_PROVIDER_BACKEND=direct — using gemini-3/openai-cli (vendor APIs)" >&2
-    else
+    #   direct (default) — gemini-3/openai-cli, vendor APIs with the user's keys.
+    #   bridge           — retired agy-cli/cliproxy-cli lane, recovery only.
+    # The default MUST match provider_backend.DEFAULT_BACKEND ('direct'); if these
+    # two disagree, the CLI lane and the model vocabulary desync.
+    if [[ "${SYNOD_PROVIDER_BACKEND:-direct}" == "bridge" ]]; then
         GEMINI_CLI=$(resolve_cli "agy-cli" || resolve_cli "gemini-3")
         OPENAI_CLI=$(resolve_cli "cliproxy-cli" || resolve_cli "openai-cli")
+        echo "[Synod] SYNOD_PROVIDER_BACKEND=bridge — retired agy/cliproxy lane" >&2
         if [[ "$GEMINI_CLI" == *"gemini-3"* ]]; then
-            echo "[Synod] agy-cli unavailable; using legacy Gemini fallback (may fail if retired service/deps unavailable)" >&2
+            echo "[Synod] agy-cli unavailable; falling back to direct gemini-3" >&2
         fi
         if [[ "$OPENAI_CLI" == *"openai-cli"* ]]; then
-            echo "[Synod] cliproxy-cli unavailable; using legacy OpenAI fallback" >&2
+            echo "[Synod] cliproxy-cli unavailable; falling back to direct openai-cli" >&2
         fi
+    else
+        GEMINI_CLI=$(resolve_cli "gemini-3")
+        OPENAI_CLI=$(resolve_cli "openai-cli")
+        echo "[Synod] backend=direct — gemini-3/openai-cli (GEMINI_API_KEY/OPENAI_API_KEY)" >&2
     fi
     SYNOD_PARSER_CLI=$(resolve_cli "synod-parser")
 
@@ -265,30 +266,36 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
 
 ## Prerequisites: CLI Tool Support
 
-### Gemini CLI (`agy-cli`, legacy fallback: `gemini-3`)
-기본 CLI는 `~/.synod/bin/agy-cli` (Antigravity CLI 래퍼, Gemini 3.5 Flash)입니다.
-`agy-cli`가 없을 때만 legacy `gemini-3`를 마지막 fallback으로 해석합니다.
+### Gemini CLI (`gemini-3`, retired bridge: `agy-cli`)
+기본 CLI는 `~/.synod/bin/gemini-3` (`GEMINI_API_KEY` 직접 호출)입니다.
+`pro-latest`는 `gemini-pro-latest` 별칭이고 현재 `gemini-3.1-pro-preview`로 해석됩니다.
 ```bash
-$GEMINI_CLI --model 3.5-flash --thinking high --timeout 110 < prompt.txt
-# agy-cli에서는 --model / --thinking 플래그를 호환성용으로 수신; 모델은 Gemini 3.5 Flash 계열 고정
+$GEMINI_CLI --model pro-latest --thinking high --timeout 240 < prompt.txt
 ```
+- **`--thinking`은 Gemini 3.x에서 네이티브 `thinking_level`로 전달됩니다** (`thinking_budget` 아님).
+  `thinking_budget`은 3.x에서 ~5k thought token에서 포화하므로 최고 추론에 도달하지 못합니다.
+- 실측(2026-07-25, hard prompt, `gemini-3.1-pro-preview`): `low` → 2,140 thought token / 30.0s,
+  `high` → 8,473 / 74.8s. `high`가 API가 허용하는 최대 깊이입니다 (`max`는 `high`로 접힘).
+- 그래서 `high`는 deep/ultra(240s/1800s)에서만 씁니다. simple(60s)에는 `low`를 유지하십시오.
 
-### OpenAI CLI (`cliproxy-cli`, legacy fallback: `openai-cli`)
-기본 CLI는 `~/.synod/bin/cliproxy-cli` (CLIProxyAPI, port 8317, ChatGPT Pro OAuth)입니다.
-`cliproxy-cli`가 없을 때만 legacy `openai-cli`를 마지막 fallback으로 해석합니다.
-- **gpt55fast** (기본값): `gpt-5.5-fast(xhigh)` — priority tier + xhigh reasoning
+### OpenAI CLI (`openai-cli`, retired bridge: `cliproxy-cli`)
+기본 CLI는 `~/.synod/bin/openai-cli` (`OPENAI_API_KEY` 직접 호출)입니다.
+- **gpt56sol** (기본값): `gpt-5.6-sol`
   ```bash
-  $OPENAI_CLI --model gpt55fast < prompt.txt
+  $OPENAI_CLI --model gpt56sol --reasoning high < prompt.txt
   ```
-- **gpt55**: `gpt-5.5(xhigh)` — standard + xhigh
+- `--reasoning`은 `low|medium|high|xhigh`를 받습니다. 실측(2026-07-25, hard prompt):
+  `low` → 1,024 reasoning token / 31.6s, `high` → 6,656 / 120.4s,
+  `xhigh` → 11,548 / 190.6s. `xhigh`는 **ultra 티어 전용** — deep(240s)에서는
+  190s가 여유가 너무 적어 `high`를 씁니다.
+- `xhigh`를 지원하지 않는 모델(`gpt5mini` 등)에 넘기면 `high`로 clamp됩니다.
 - **gpt54mini**: `gpt-5.4-mini` — fast tier
+- **gpt55** / **o3**: 구 recovery 경로
 
-> **주의**: CLIProxyAPI 서비스(port 8317)가 실행 중이어야 함. 토큰 만료 시 재로그인 필요.
->
-> **백엔드 수명 (cutover)**: `agy-cli`/`cliproxy-cli`는 **2026-06-30 만료 예정**인 개인용 임시 브리지입니다.
-> 영속(durable) canonical 백엔드는 direct(`gemini-3`/`openai-cli` + 본인 API 키)입니다.
-> `SYNOD_PROVIDER_BACKEND=direct`로 전환하면 `tier_matrix.py`가 로스터를 direct CLI로 재작성합니다
-> (`3.5-flash`→`flash-latest`, `gpt55fast`→`gpt55`). 사전 검증: `python3 tools/cutover_check.py`.
+> **백엔드**: 기본값은 `direct`입니다 (`provider_backend.DEFAULT_BACKEND`).
+> `agy-cli`/`cliproxy-cli` 브리지는 **2026-06-30 만료 후 은퇴**했고,
+> `SYNOD_PROVIDER_BACKEND=bridge`로만 복구용으로 도달할 수 있습니다.
+> 사전 검증: `python3 tools/cutover_check.py`.
 
 ### DeepSeek CLI (`deepseek-cli`)
 ```bash

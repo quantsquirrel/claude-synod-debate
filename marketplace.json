@@ -76,26 +76,27 @@
   "externalDependencies": {
     "apis": [
       {
-        "name": "Antigravity CLI (agy-cli)",
-        "required": true,
-        "note": "Primary Gemini access path. Authenticate via `agy` CLI; no separate env key required."
-      },
-      {
-        "name": "CLIProxyAPI (cliproxy-cli)",
-        "required": true,
-        "note": "Primary OpenAI access path. Run locally on port 8317; CLIPROXY_API_KEY is optional when using Synod's default local key."
-      },
-      {
         "name": "Google Gemini API",
-        "required": false,
+        "required": true,
         "envVar": "GEMINI_API_KEY",
-        "note": "Legacy fallback only (gemini-3.py). Not needed when using agy-cli."
+        "note": "Primary Gemini access path (gemini-3.py), model `pro-latest` = Gemini 3.1 Pro. GOOGLE_API_KEY is accepted as a fallback."
       },
       {
         "name": "OpenAI API",
-        "required": false,
+        "required": true,
         "envVar": "OPENAI_API_KEY",
-        "note": "Legacy fallback only (openai-cli.py). Not needed when using cliproxy-cli."
+        "note": "Primary OpenAI access path (openai-cli.py), model `gpt56sol` = gpt-5.6-sol."
+      },
+      {
+        "name": "Antigravity CLI (agy-cli)",
+        "required": false,
+        "note": "Retired bridge, expired ~2026-06-30. Reachable only via SYNOD_PROVIDER_BACKEND=bridge for recovery."
+      },
+      {
+        "name": "CLIProxyAPI (cliproxy-cli)",
+        "required": false,
+        "envVar": "CLIPROXY_API_KEY",
+        "note": "Retired bridge, expired ~2026-06-30. Reachable only via SYNOD_PROVIDER_BACKEND=bridge for recovery."
       }
     ]
   },

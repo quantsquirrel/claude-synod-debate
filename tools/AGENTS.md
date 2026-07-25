@@ -3,9 +3,9 @@
 
 # Tools Directory - LLM Integration CLI Utilities
 
-This directory contains standalone CLI utilities for integrating external LLM models with the Synod plugin framework. Current Synod setup defaults route Gemini through `agy-cli` (Antigravity Gemini 3.5 Flash) and OpenAI through `cliproxy-cli.py` (CLIProxyAPI localhost:8317).
+This directory contains standalone CLI utilities for integrating external LLM models with the Synod plugin framework. Synod routes Gemini through `gemini-3.py` (`GEMINI_API_KEY`, model `pro-latest` = Gemini 3.1 Pro) and OpenAI through `openai-cli.py` (`OPENAI_API_KEY`, model `gpt56sol` = gpt-5.6-sol).
 
-> **Backend lifetime (cutover):** the `agy-cli`/`cliproxy-cli` bridges are a personal, time-limited convenience that **expires ~2026-06-30**. The *durable, canonical* backend is **direct** — `gemini-3.py` + `openai-cli.py` talking to the vendor APIs with the user's own keys. Despite the "legacy fallback only" labels below (accurate for the *current* routing window), direct is the long-term path. `provider_backend.py` rewrites a bridge roster to direct on demand; flip with `SYNOD_PROVIDER_BACKEND=direct` and validate offline first via `python3 tools/cutover_check.py`. See `tools/cutover.sh` and `CUTOVER_RUNBOOK.md`.
+> **Backend:** `direct` is the default (`provider_backend.DEFAULT_BACKEND`). The `agy-cli`/`cliproxy-cli` bridges expired ~2026-06-30 and are **retired** — reachable only via `SYNOD_PROVIDER_BACKEND=bridge` for recovery on an old roster. Validate the direct lane offline with `python3 tools/cutover_check.py`. See `tools/cutover.sh` and `CUTOVER_RUNBOOK.md`.
 
 ## Purpose
 
@@ -21,8 +21,8 @@ CLI utilities for querying multiple LLM providers with:
 ```
 tools/
 ├── synod-parser.py        # Response parser & Trust Score calculator
-├── agy-cli                # Antigravity Gemini 3.5 Flash wrapper
-├── cliproxy-cli.py        # CLIProxyAPI OpenAI-compatible wrapper
+├── agy-cli                # Retired Antigravity bridge (recovery only)
+├── cliproxy-cli.py        # Retired CLIProxyAPI bridge (recovery only)
 ├── gemini-3.py            # Legacy direct Google Gemini integration
 ├── openai-cli.py          # Legacy direct OpenAI integration
 ├── AGENTS.md              # This file
@@ -101,7 +101,7 @@ tools/
 
 ### gemini-3.py
 
-> **LEGACY FALLBACK ONLY** — Synod's primary Gemini path is `agy-cli`. Use `gemini-3.py` only when `agy-cli` is unavailable or for historical test reproduction. Requires `GEMINI_API_KEY`.
+> **PRIMARY GEMINI PATH** — Synod routes the Gemini lane here. Requires `GEMINI_API_KEY` (`GOOGLE_API_KEY` accepted as fallback).
 
 **Purpose**: Query Google Gemini models with adaptive thinking budget and streaming support.
 
@@ -153,6 +153,12 @@ gemini-3 --no-stream --no-adaptive "prompt"
 ```
 -m, --model          Model to use (flash|pro|3.1-flash-lite|3.1-pro|2.5-flash|2.5-pro|flash-latest|pro-latest|flash-lite-latest, default: flash)
 -t, --thinking       Thinking level (minimal|low|medium|high|max, default: medium)
+                     On Gemini 3.x this maps to the native `thinking_level` enum,
+                     NOT `thinking_budget` (which saturates ~5k thought tokens).
+                     `max` collapses to HIGH — the API has no deeper level.
+                     Measured on gemini-3.1-pro-preview (hard prompt, 2026-07-25):
+                     low -> 2,140 thought tokens / 30.0s; high -> 8,473 / 74.8s.
+                     Legacy `gemini-2.5-*` models still use `thinking_budget`.
 --timeout            Timeout in seconds (default: 300)
 --no-stream          Disable streaming (not recommended for long responses)
 --no-adaptive        Disable adaptive retry (thinking level downgrade)
@@ -195,7 +201,7 @@ Attempt 3: thinking=low, success → return response
 
 ### openai-cli.py
 
-> **LEGACY FALLBACK ONLY** — Synod's primary OpenAI path is `cliproxy-cli.py` (CLIProxyAPI). Use `openai-cli.py` only when CLIProxyAPI is unavailable or for historical test reproduction. Requires `OPENAI_API_KEY`.
+> **PRIMARY OPENAI PATH** — Synod routes the OpenAI lane here. Requires `OPENAI_API_KEY`.
 
 **Purpose**: Query OpenAI models with reasoning effort and adaptive retry support.
 
@@ -563,19 +569,19 @@ Tools must work on macOS/Linux with POSIX sed/grep:
 
 | Package | Version | Used By | Installation |
 |---------|---------|---------|--------------|
-| openai | >=1.0.0 | cliproxy-cli.py | `pip install openai` |
+| google-genai | >=1.0.0 | gemini-3.py | `pip install google-genai` |
+| openai | >=1.0.0 | openai-cli.py, cliproxy-cli.py | `pip install openai` |
 | httpx | >=0.24.0 | cliproxy-cli.py | `pip install httpx` |
-| google-genai | >=1.0.0 | gemini-3.py legacy tests only | `pip install google-genai` |
 
 ### Environment Variables
 
 | Variable | Required | Used By | Example |
 |----------|----------|---------|---------|
-| agy login/session | Yes | agy-cli | `agy` should already be authenticated |
-| CLIProxyAPI on 8317 | Yes | cliproxy-cli.py | `~/CLIProxyAPI/config.yaml` api-keys |
-| CLIPROXY_API_KEY | Optional | cliproxy-cli.py | `export CLIPROXY_API_KEY="..."` |
-| GEMINI_API_KEY | Legacy only | gemini-3.py | `export GEMINI_API_KEY="..."` |
-| OPENAI_API_KEY | Legacy only | openai-cli.py | `export OPENAI_API_KEY="..."` |
+| GEMINI_API_KEY | Yes | gemini-3.py | `export GEMINI_API_KEY="..."` |
+| GOOGLE_API_KEY | Fallback | gemini-3.py | used when GEMINI_API_KEY is unset |
+| OPENAI_API_KEY | Yes | openai-cli.py | `export OPENAI_API_KEY="..."` |
+| agy login/session | Recovery only | agy-cli | retired bridge |
+| CLIPROXY_API_KEY | Recovery only | cliproxy-cli.py | retired bridge |
 
 ### Python Version
 

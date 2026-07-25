@@ -143,6 +143,7 @@ class TestOpenAIProvider:
         assert "gpt5mini" in provider_class.REASONING_MODELS
         assert "gpt54mini" in provider_class.REASONING_MODELS
         assert "gpt55" in provider_class.REASONING_MODELS
+        assert "gpt56sol" in provider_class.REASONING_MODELS
 
     def test_timeout_config_exists(self, provider_class):
         """Test TIMEOUT_CONFIG attribute exists."""
@@ -150,9 +151,13 @@ class TestOpenAIProvider:
         assert isinstance(provider_class.TIMEOUT_CONFIG, dict)
 
     def test_reasoning_levels_exists(self, provider_class):
-        """Test REASONING_LEVELS attribute exists."""
+        """Test REASONING_LEVELS attribute exists.
+
+        'xhigh' leads the ladder — gpt-5.6-sol accepts it and it is the deepest
+        effort the OpenAI API exposes.
+        """
         assert hasattr(provider_class, "REASONING_LEVELS")
-        assert provider_class.REASONING_LEVELS == ["high", "medium", "low"]
+        assert provider_class.REASONING_LEVELS == ["xhigh", "high", "medium", "low"]
 
 
 class TestDeepSeekProvider:

@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
 """provider_backend.py — resolve a tier roster to a concrete provider backend.
 
-Synod's model_matrix.json is authored against the **bridge** backend: the
-Gemini lane runs through `agy-cli` (Antigravity Gemini 3.5 Flash) and the
-OpenAI lane runs through `cliproxy-cli` (CLIProxyAPI). Those bridges are a
-personal, time-limited convenience that expires ~2026-06-30.
+Synod's model_matrix.json is authored against the **direct** backend — the
+official `gemini-3` and `openai-cli` wrappers talking to the vendor APIs with
+the user's own `GEMINI_API_KEY` / `OPENAI_API_KEY`. Direct is the default.
 
-The **durable** backend is `direct`: the official `gemini-3` and `openai-cli`
-wrappers talking to the vendor APIs with the user's own keys. A direct roster
-needs two rewrites per entry:
+The **bridge** backend (`agy-cli` for Antigravity Gemini, `cliproxy-cli` for
+CLIProxyAPI) was a personal, time-limited convenience that expired ~2026-06-30
+and is retired. Its translation table is retained so an old bridge-authored
+roster still resolves, which needs two rewrites per entry:
 
   1. ``cli``   — agy-cli → gemini-3, cliproxy-cli → openai-cli
   2. ``model`` — the bridge model string is translated to the equivalent
-                 direct-CLI model key (e.g. ``3.5-flash`` → ``flash-latest``,
+                 direct-CLI model key (e.g. ``3.1-pro`` → ``pro-latest``,
                  ``gpt55fast`` → ``gpt55``).
 
 The model translation is intentionally *model-accurate* (not tier-accurate):
-bridge ``3.5-flash`` maps to the stable ``flash-latest`` alias rather than a
+bridge ``3.1-pro`` maps to the stable ``pro-latest`` alias rather than a
 preview pin, and the cliproxy ``gpt55fast`` fast variant maps to its closest
-direct equivalent ``gpt55`` (= gpt-5.5).
+direct equivalent ``gpt55`` (= gpt-5.5). Direct-vocabulary models map to
+themselves, so resolving a direct roster under ``direct`` is a no-op.
 
 Backend selection precedence:
-  explicit argument  >  ``SYNOD_PROVIDER_BACKEND`` env  >  default ``bridge``.
+  explicit argument  >  ``SYNOD_PROVIDER_BACKEND`` env  >  default ``direct``.
 
-An unknown backend value falls back to ``bridge`` with a stderr warning so a
-typo never silently switches lanes during the cutover window.
+An unknown backend value falls back to ``direct`` with a stderr warning so a
+typo never silently routes through the retired bridges.
 
 Exit codes (CLI):
   0 — success
@@ -43,7 +44,7 @@ BRIDGE = "bridge"
 DIRECT = "direct"
 VALID_BACKENDS = {BRIDGE, DIRECT}
 
-DEFAULT_BACKEND = BRIDGE
+DEFAULT_BACKEND = DIRECT
 BACKEND_ENV = "SYNOD_PROVIDER_BACKEND"
 
 # Per-provider CLI swap applied for the direct backend.
@@ -58,13 +59,21 @@ DIRECT_CLI = {
 # (gemini-3.py / openai-cli.py); cutover_check.py validates this invariant.
 DIRECT_MODEL = {
     "gemini": {
-        "3.5-flash": "flash-latest",  # stable alias, avoids preview EOL churn
+        # Identity entries: the matrix is now authored in direct vocabulary, so
+        # resolving it under `direct` must be a no-op rather than an error.
+        "pro-latest": "pro-latest",
+        "flash-latest": "flash-latest",
+        "flash-lite-latest": "flash-lite-latest",
+        # Retired agy bridge keys, kept so an old roster still resolves.
+        "3.1-pro": "pro-latest",
+        "3.5-flash": "flash-latest",
         "flash": "flash-latest",
         "pro": "pro-latest",
     },
     "openai": {
+        "gpt56sol": "gpt56sol",
         "gpt54mini": "gpt54mini",
-        "gpt55fast": "gpt55",  # cliproxy fast variant → direct gpt-5.5
+        "gpt55fast": "gpt55",  # retired cliproxy fast variant → direct gpt-5.5
         "gpt55": "gpt55",
         "gpt54": "gpt54",
         "o3": "o3",
@@ -80,8 +89,8 @@ def get_backend(explicit: str | None = None) -> str:
     """Resolve the active backend.
 
     Precedence: explicit arg > SYNOD_PROVIDER_BACKEND env > DEFAULT_BACKEND.
-    Unknown values warn and fall back to ``bridge`` so a typo can never silently
-    flip lanes mid-cutover.
+    Unknown values warn and fall back to ``direct`` so a typo can never silently
+    route through the retired bridges.
     """
     if explicit is not None and explicit != "":
         candidate = explicit
@@ -142,7 +151,7 @@ def translate_model(provider: str, model: str, backend: str) -> str:
     """Translate a single provider model string for ``backend``.
 
     Used by the /synod runtime (SKILL.md / phase1) to convert a bridge model
-    string (e.g. ``3.5-flash``) to its direct-CLI equivalent (``flash-latest``)
+    string (e.g. ``3.1-pro``) to its direct-CLI equivalent (``pro-latest``)
     when SYNOD_PROVIDER_BACKEND=direct. ``bridge`` returns the model unchanged.
     Raises BackendResolutionError for an unmapped direct model.
     """

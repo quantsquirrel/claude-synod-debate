@@ -6,11 +6,11 @@ modes:
     description: "Code review and static analysis"
     models:
       gemini:
-        model: "3.5-flash"
-        thinking: "high"
+        model: "pro-latest"
+        thinking: "low"
       openai:
-        model: "gpt55fast"
-        reasoning: null
+        model: "gpt56sol"
+        reasoning: "low"
     rounds:
       base: 3
       dynamic_range: [2, 4]
@@ -23,11 +23,11 @@ modes:
     description: "Architecture and system design decisions"
     models:
       gemini:
-        model: "3.5-flash"
-        thinking: "high"
+        model: "pro-latest"
+        thinking: "low"
       openai:
-        model: "gpt55fast"
-        reasoning: null
+        model: "gpt56sol"
+        reasoning: "low"
     rounds:
       base: 4
       dynamic_range: [3, 4]
@@ -40,11 +40,11 @@ modes:
     description: "Troubleshooting and root cause analysis"
     models:
       gemini:
-        model: "3.5-flash"
-        thinking: "high"
+        model: "pro-latest"
+        thinking: "low"
       openai:
-        model: "gpt55fast"
-        reasoning: null
+        model: "gpt56sol"
+        reasoning: "low"
     rounds:
       base: 3
       dynamic_range: [2, 4]
@@ -57,11 +57,11 @@ modes:
     description: "Brainstorming and creative ideation"
     models:
       gemini:
-        model: "3.5-flash"
-        thinking: "high"
+        model: "pro-latest"
+        thinking: "low"
       openai:
-        model: "gpt55fast"
-        reasoning: null
+        model: "gpt56sol"
+        reasoning: "low"
     rounds:
       base: 4
       dynamic_range: [3, 4]
@@ -74,11 +74,11 @@ modes:
     description: "Balanced comprehensive analysis"
     models:
       gemini:
-        model: "3.5-flash"
-        thinking: "medium"
+        model: "pro-latest"
+        thinking: "low"
       openai:
-        model: "gpt55fast"
-        reasoning: null
+        model: "gpt56sol"
+        reasoning: "low"
     rounds:
       base: 3
       dynamic_range: [2, 4]
@@ -159,10 +159,12 @@ keywords:
 # Tier selects models, mode selects focus/rounds
 tiers:
   fast:
-    description: "Simple queries - cost-efficient models"
+    description: "Simple queries - shallow reasoning to stay inside the 60s ceiling"
     gemini:
-      model: "3.5-flash"
-      thinking: "medium"
+      # thinking MUST stay 'low' here: measured thinking_level=HIGH on
+      # gemini-3.1-pro is ~75s on a hard prompt, which blows the 60s model timeout.
+      model: "pro-latest"
+      thinking: "low"
     openai:
       model: "gpt54mini"
       reasoning: null
@@ -174,13 +176,17 @@ tiers:
     description: "Medium queries - balanced models (mode defaults)"
     # No model/timeout overrides - uses defaults as-is
   deep:
-    description: "Complex queries - strongest models"
+    description: "Complex queries - maximum reasoning depth"
     gemini:
-      model: "3.5-flash"
+      # thinking_level=HIGH is the deepest the Gemini API accepts (~8.5k thought
+      # tokens, ~75s measured); the 240s ceiling below absorbs it.
+      model: "pro-latest"
       thinking: "high"
     openai:
-      model: "gpt55fast"
-      reasoning: null
+      # gpt-5.6-sol: high = 6,656 reasoning tokens / ~120s (fits the 240s ceiling).
+      # xhigh = 11,548 / ~191s, reserved for the ultra tier.
+      model: "gpt56sol"
+      reasoning: "high"
     timeouts:
       # model:240 is the authoritative per-call ceiling; model_matrix.json deep
       # timeout_sec is aligned to this value (was 600, corrected in v3.6.1).
@@ -205,8 +211,9 @@ thresholds:
   early_exit_confidence: 90
 
 
-# Previous direct-API defaults retained for recovery/reference only.
-# Primary runtime should prefer agy-cli and cliproxy-cli.
+# Older direct-API defaults retained for recovery/reference only.
+# Primary runtime uses gemini-3 + openai-cli with the user's own API keys;
+# the agy-cli/cliproxy-cli bridges were retired after their ~2026-06-30 expiry.
 legacy_fallbacks:
   gemini:
     cli: "gemini-3"

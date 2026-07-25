@@ -97,6 +97,14 @@ ignore_missing_imports = true
 check_untyped_defs = true
 disable_error_code = ["union-attr", "call-overload", "return-value", "assignment"]
 
+# `python_version = "3.9"` also applies to third-party sources mypy follows into.
+# anyio (pulled in transitively by httpx) uses `match` statements, so mypy parses
+# it as a syntax error and aborts before ever reaching tools/ — a failure that has
+# nothing to do with this project's code. Skip following into it.
+[[tool.mypy.overrides]]
+module = ["anyio.*"]
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["archived"]

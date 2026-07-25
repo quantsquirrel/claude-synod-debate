@@ -9,7 +9,11 @@ Usage:
 
 Models: flash (default), pro, 3.1-flash-lite, 3.1-pro, 2.5-flash, 2.5-pro,
         flash-latest, pro-latest, flash-lite-latest
-Thinking: minimal, low, medium (default), high
+Thinking: minimal, low, medium (default), high, max
+
+On Gemini 3.x models the thinking level is sent as the native `thinking_level`
+enum, where `high` is the deepest setting available and `max` collapses to it.
+Only the legacy 2.5 family uses the `thinking_budget` token knob.
 """
 
 import argparse
@@ -18,6 +22,7 @@ import sys
 
 # Suppress warnings
 import warnings
+from typing import Any
 
 warnings.filterwarnings("ignore")
 
@@ -52,7 +57,8 @@ class GeminiProvider(BaseProvider):
     }
     DEFAULT_MODEL = "flash"
 
-    # Thinking budget mapping (tokens)
+    # Thinking budget mapping (tokens). Legacy knob — only the 2.5 family still
+    # needs it; see THINKING_LEVEL_MAP for why 3.x uses a different control.
     THINKING_MAP = {
         "minimal": 50,
         "low": 200,
@@ -61,8 +67,30 @@ class GeminiProvider(BaseProvider):
         "max": 10000,
     }
 
-    # Retry levels (progressive downgrade)
-    RETRY_LEVELS = ["high", "medium", "low", "minimal"]
+    # Gemini 3.x native thinking control. thinking_budget SATURATES on 3.x, so it
+    # cannot reach maximum reasoning depth. Measured on gemini-3.1-pro-preview
+    # (2026-07-25, hard reasoning prompt), thought tokens / wall clock:
+    #   budget=200   →  1,153 / 22.3s     budget=2000  →  5,766 / 55.5s
+    #   budget=10000 →  5,137 / 52.6s  (no gain over 2000 — saturated)
+    #   level=LOW    →  2,140 / 30.0s     level=HIGH   →  8,473 / 74.8s
+    # HIGH is the deepest level the API accepts; thinking_level="max" is rejected
+    # (400 INVALID_ARGUMENT), and level+budget are mutually exclusive (400).
+    THINKING_LEVEL_MAP = {
+        "minimal": "MINIMAL",
+        "low": "LOW",
+        "medium": "MEDIUM",
+        "high": "HIGH",
+        "max": "HIGH",  # no native level above HIGH
+    }
+
+    # Vendor model ids that accept only the legacy thinking_budget knob. Everything
+    # else — 3.x pins and the stable -latest aliases, which resolve to 3.x — takes
+    # thinking_level, with a runtime fallback if a model rejects it.
+    BUDGET_ONLY_MODEL_PREFIXES = ("gemini-2.5",)
+
+    # Retry levels (progressive downgrade). "max" is included so a downgrade from
+    # the top level steps to "high" instead of skipping two levels to "low".
+    RETRY_LEVELS = ["max", "high", "medium", "low", "minimal"]
 
     def validate_api_key(self) -> str:
         """Validate API key with GOOGLE_API_KEY fallback."""
@@ -76,16 +104,79 @@ class GeminiProvider(BaseProvider):
         api_key = self.validate_api_key()
         return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=timeout_ms))
 
-    def generate(self, client, model: str, prompt: str, **kwargs) -> str:
-        """Generate response using Gemini API with streaming support."""
-        args = kwargs.get("args")
-        thinking_level = args.thinking if hasattr(args, "thinking") else "medium"
-        use_streaming = not args.no_stream if hasattr(args, "no_stream") else True
-        temperature = args.temperature if hasattr(args, "temperature") else 0.7
+    @classmethod
+    def is_thinking_level_model(cls, model: str) -> bool:
+        """True when the vendor model family takes the Gemini 3.x ``thinking_level`` enum.
 
-        thinking_budget = self.THINKING_MAP.get(thinking_level, 500)
+        Only the legacy 2.5 family still requires ``thinking_budget``. 3.x pins and
+        the stable ``-latest`` aliases (``gemini-pro-latest`` currently resolves to
+        ``gemini-3.1-pro-preview``) take ``thinking_level``. This is a statement about
+        the model only — see ``sdk_supports_thinking_level`` for the client side.
+        """
+        return not model.startswith(cls.BUDGET_ONLY_MODEL_PREFIXES)
+
+    @staticmethod
+    def sdk_supports_thinking_level() -> bool:
+        """True when the installed google-genai exposes ``ThinkingConfig.thinking_level``.
+
+        Older google-genai releases (still resolvable on Python 3.9) have no such
+        field and reject it at **construction** time with a pydantic ValidationError,
+        before any network call is made. Probing the model fields keeps an old SDK
+        from turning into a hard failure of the whole Gemini lane.
+        """
+        fields = getattr(types.ThinkingConfig, "model_fields", None)
+        if fields is not None:
+            return "thinking_level" in fields
+        return hasattr(types, "ThinkingLevel")
+
+    @classmethod
+    def uses_thinking_level(cls, model: str) -> bool:
+        """True when both the model and the installed SDK support ``thinking_level``."""
+        return cls.is_thinking_level_model(model) and cls.sdk_supports_thinking_level()
+
+    @staticmethod
+    def is_thinking_arg_error(error: Exception) -> bool:
+        """True when an error is the API or the SDK rejecting ``thinking_level``.
+
+        Covers both failure shapes: a server-side 400 INVALID_ARGUMENT, and a
+        client-side pydantic ValidationError from an SDK that lacks the field.
+        """
+        text = str(error)
+        if "thinking_level" not in text:
+            return False
+        return any(
+            marker in text
+            for marker in (
+                "INVALID_ARGUMENT",
+                "400",
+                "extra_forbidden",
+                "Extra inputs are not permitted",
+            )
+        )
+
+    def build_thinking_config(self, thinking_level: str, use_level: bool):
+        """Build a ThinkingConfig using either the level enum or the token budget."""
+        if use_level:
+            # The SDK types this field as the ThinkingLevel enum, but pydantic coerces
+            # the member name. Strings are kept in THINKING_LEVEL_MAP deliberately: an
+            # older google-genai has no ThinkingLevel enum at all, and referencing it
+            # at class-definition time would break import instead of degrading.
+            level: Any = self.THINKING_LEVEL_MAP.get(thinking_level, "HIGH")
+            return types.ThinkingConfig(thinking_level=level)
+        return types.ThinkingConfig(thinking_budget=self.THINKING_MAP.get(thinking_level, 500))
+
+    def _generate_once(
+        self,
+        client,
+        model: str,
+        prompt: str,
+        thinking_level: str,
+        use_level: bool,
+        use_streaming: bool,
+        temperature: float,
+    ) -> str:
         config = types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+            thinking_config=self.build_thinking_config(thinking_level, use_level),
             temperature=temperature,
         )
 
@@ -103,6 +194,46 @@ class GeminiProvider(BaseProvider):
             # Non-streaming mode
             response = client.models.generate_content(model=model, contents=prompt, config=config)
             return response.text
+
+    def generate(self, client, model: str, prompt: str, **kwargs) -> str:
+        """Generate response using Gemini API with streaming support."""
+        args = kwargs.get("args")
+        thinking_level = args.thinking if hasattr(args, "thinking") else "medium"
+        use_streaming = not args.no_stream if hasattr(args, "no_stream") else True
+        temperature = args.temperature if hasattr(args, "temperature") else 0.7
+
+        use_level = self.uses_thinking_level(model)
+        if (
+            not use_level
+            and thinking_level in ("high", "max")
+            and self.is_thinking_level_model(model)
+        ):
+            # Silently dropping to thinking_budget here would recreate exactly the
+            # trap this lane exists to avoid: budget saturates ~5k thought tokens on
+            # 3.x, so "high" would quietly stop being the deepest setting.
+            print(
+                "[Warning] installed google-genai has no ThinkingConfig.thinking_level; "
+                f"'{thinking_level}' falls back to thinking_budget, which saturates on "
+                "Gemini 3.x and cannot reach maximum reasoning depth. "
+                "Upgrade with: pip install -U google-genai",
+                file=sys.stderr,
+            )
+        try:
+            return self._generate_once(
+                client, model, prompt, thinking_level, use_level, use_streaming, temperature
+            )
+        except Exception as exc:
+            # A model that rejects thinking_level must still answer: fall back to the
+            # legacy budget knob once rather than dropping the whole Gemini lane.
+            if use_level and self.is_thinking_arg_error(exc):
+                print(
+                    f"[Fallback] {model} rejected thinking_level - retrying with thinking_budget",
+                    file=sys.stderr,
+                )
+                return self._generate_once(
+                    client, model, prompt, thinking_level, False, use_streaming, temperature
+                )
+            raise
 
     def add_provider_args(self, parser: argparse.ArgumentParser):
         """Add Gemini-specific arguments."""

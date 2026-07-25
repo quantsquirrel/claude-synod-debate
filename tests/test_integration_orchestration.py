@@ -262,37 +262,35 @@ class TestProblemTypeIntegration:
         problem_type = classifier.classify_problem_type(prompt)
 
         assert problem_type == "coding"
-        # In general mode, coding problem_type should suggest high thinking
+        # Mode defaults now sit at thinking "low" (the standard-tier depth), so the
+        # coding override in Phase 0.4b is a real escalation rather than a no-op.
         if mode == "general":
             mode_config = get_mode_config(mode)
             base_thinking = mode_config["models"]["gemini"]["thinking"]
-            assert base_thinking == "medium"  # general mode default is medium
-            # Adjustment should override to high
-            adjusted_thinking = "high"  # problem_type=coding override
+            assert base_thinking == "low"
+            adjusted_thinking = "high"  # problem_type=coding escalates depth
             assert adjusted_thinking != base_thinking
 
     def test_problem_type_to_model_adjustment_math(self):
-        """Test math problem_type keeps OpenAI on CLIProxy gpt55fast."""
+        """Test math problem_type keeps OpenAI on gpt-5.6-sol."""
         prompt = "수학 문제를 풀어줘"
         problem_type = classifier.classify_problem_type(prompt)
         assert problem_type == "math"
 
-        # Math problems should stay on CLIProxy gpt55fast
-        # Check that general mode default is already CLIProxy gpt55fast
+        # The math override only upgrades the mini tier; general already defaults
+        # to gpt56sol, so the adjustment is a no-op here.
         general_config = get_mode_config("general")
-        assert general_config["models"]["openai"]["model"] == "gpt55fast"
-        # Adjustment: math -> gpt55fast
+        assert general_config["models"]["openai"]["model"] == "gpt56sol"
 
     def test_problem_type_to_model_adjustment_creative(self):
-        """Test creative problem_type keeps Gemini on agy 3.5 Flash."""
+        """Test creative problem_type keeps Gemini on pro-latest."""
         prompt = "아이디어 좀 줘"
         problem_type = classifier.classify_problem_type(prompt)
         assert problem_type == "creative"
 
-        # Creative problems should stay on agy Gemini 3.5 Flash
+        # Creative problems stay on the same model family; no demotion.
         general_config = get_mode_config("general")
-        assert general_config["models"]["gemini"]["model"] == "3.5-flash"
-        # Adjustment: creative -> 3.5-flash
+        assert general_config["models"]["gemini"]["model"] == "pro-latest"
 
     def test_problem_type_in_full_classifier_json(self, capsys):
         """Test problem_type is always present in classifier main() JSON output."""
@@ -484,7 +482,7 @@ class TestConfigProgressIntegration:
 
         # Phase 1b: Get mode config
         mode_config = get_mode_config(mode)
-        assert mode_config["models"]["gemini"]["model"] == "3.5-flash"
+        assert mode_config["models"]["gemini"]["model"] == "pro-latest"
 
         # Phase 1c: Progress tracking
         progress = SynodProgress()

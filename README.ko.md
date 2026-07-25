@@ -95,8 +95,8 @@ git clone https://github.com/quantsquirrel/claude-synod-debate.git
 cd claude-synod-debate
 
 # 2️⃣ 로컬 모델 브리지 준비
-#    - Antigravity CLI(`agy`) 로그인
-#    - CLIProxyAPI를 localhost:8317에서 실행
+export GEMINI_API_KEY="your-gemini-key"
+export OPENAI_API_KEY="your-openai-key"
 
 # 3️⃣ 초기 설정 (의존성 설치, CLI 구성, 모델 테스트)
 /synod-setup
@@ -159,21 +159,21 @@ Step 0/3: Python 의존성 확인
   ✓ httpx 설치됨
 
 Step 1/3: CLI 도구 설치 (~/.synod/bin)
-  ✓ agy-cli 설치됨
-  ✓ cliproxy-cli 설치됨
-  ✓ gemini-3 설치됨 (legacy fallback)
-  ✓ openai-cli 설치됨 (legacy fallback)
+  ✓ gemini-3 설치됨
+  ✓ openai-cli 설치됨
+  ✓ agy-cli 설치됨 (은퇴한 브리지)
+  ✓ cliproxy-cli 설치됨 (은퇴한 브리지)
 
 Step 2/3: 로컬 세션/프록시 확인
-  ✓ Antigravity OAuth/session (설정됨)
-  ✓ CLIPROXY_API_KEY (optional; CLIProxyAPI localhost:8317) (설정됨)
+  ✓ GEMINI_API_KEY (설정됨)
+  ✓ OPENAI_API_KEY (설정됨)
 
 Step 3/3: 모델 응답 시간 측정 (타임아웃: 120초)
 
 Provider    Model              Latency    Status
 ───────────────────────────────────────────────────────
-gemini      3.5-flash          3.2초       ✓ 권장
-openai      gpt55fast          2.8초       ✓ 권장
+gemini      pro-latest         3.3초       ✓ 권장
+openai      gpt56sol           2.5초       ✓ 권장
 
 [완료] 2/2 모델 사용 가능
 Synod를 사용할 준비가 되었습니다!
@@ -199,10 +199,9 @@ Synod를 사용할 준비가 되었습니다!
 
 | 프로바이더 | CLI | 최적 용도 | 상태 |
 |:--------:|:---:|:---------|:----:|
-| 🔵 **Gemini** | `agy-cli` | Antigravity Gemini 3.5 Flash | 필수 |
-| 🔵 Gemini legacy | `gemini-3` | 이전 direct API 기본값 | fallback only |
-| 🟢 **OpenAI** | `cliproxy-cli` | CLIProxyAPI / ChatGPT Pro OAuth | 필수 |
-| 🟢 OpenAI legacy | `openai-cli` | 이전 direct API 기본값 | fallback only |
+| 🔵 **Gemini** | `gemini-3` | `GEMINI_API_KEY`로 Gemini 3.1 Pro 호출 | 필수 |
+| 🟢 **OpenAI** | `openai-cli` | `OPENAI_API_KEY`로 gpt-5.6-sol 호출 | 필수 |
+| ⚪ 은퇴한 브리지 | `agy-cli` / `cliproxy-cli` | Antigravity / CLIProxyAPI (2026-06-30 만료) | 복구용 |
 | 🟣 **DeepSeek** | `deepseek-cli` | 수학, 추론 (R1) | 선택 |
 | ⚡ **Groq** | `groq-cli` | 초고속 추론 (LPU) | 선택 |
 | 🌐 **OpenRouter** | `openrouter-cli` | 다중 모델 폴백 | 권장 |
@@ -254,11 +253,11 @@ export MISTRAL_API_KEY="your-mistral-key"
 
 | | 모드 | 활용 상황 | 구성 |
 |:---:|:---:|:----------|:-----|
-| 🔍 | **`review`** | 코드 리뷰, 보안 감사, PR 분석 | `Gemini 3.5 Flash` ⚔️ `CLIProxy gpt55fast` |
-| 🏗️ | **`design`** | 시스템 아키텍처 설계 | `Gemini 3.5 Flash` ⚔️ `CLIProxy gpt55fast` |
-| 🐛 | **`debug`** | 원인 불명의 버그 추적 | `Gemini 3.5 Flash` ⚔️ `CLIProxy gpt55fast` |
-| 💡 | **`idea`** | 브레인스토밍, 전략 기획 | `Gemini 3.5 Flash` ⚔️ `CLIProxy gpt55fast` |
-| 🌐 | **`general`** | 그 밖의 모든 질문 | `Gemini 3.5 Flash` ⚔️ `CLIProxy gpt55fast` |
+| 🔍 | **`review`** | 코드 리뷰, 보안 감사, PR 분석 | `Gemini 3.1 Pro` ⚔️ `gpt-5.6-sol` |
+| 🏗️ | **`design`** | 시스템 아키텍처 설계 | `Gemini 3.1 Pro` ⚔️ `gpt-5.6-sol` |
+| 🐛 | **`debug`** | 원인 불명의 버그 추적 | `Gemini 3.1 Pro` ⚔️ `gpt-5.6-sol` |
+| 💡 | **`idea`** | 브레인스토밍, 전략 기획 | `Gemini 3.1 Pro` ⚔️ `gpt-5.6-sol` |
+| 🌐 | **`general`** | 그 밖의 모든 질문 | `Gemini 3.1 Pro` ⚔️ `gpt-5.6-sol` |
 
 </div>
 
@@ -361,9 +360,9 @@ Synod는 **CortexDebate** 공식으로 각 응답의 신뢰도를 산출합니�
 git clone https://github.com/quantsquirrel/claude-synod-debate.git
 cd claude-synod-debate
 
-# 전제: agy 로그인 완료, CLIProxyAPI가 localhost:8317에서 실행 중
-# 프록시가 기본 키가 아닌 별도 키를 쓰는 경우만 설정
-export CLIPROXY_API_KEY="your-local-proxy-key"
+# 전제: 프로바이더 API 키 설정
+export GEMINI_API_KEY="your-gemini-key"
+export OPENAI_API_KEY="your-openai-key"
 
 # Claude Code 안에서 초기 설정 실행 (Python 의존성 설치, CLI 래퍼 생성, 모델 테스트까지 자동 처리)
 /synod-setup
@@ -395,8 +394,9 @@ python3 tools/synod-setup.py
 <br/>
 
 ```bash
-# CLIProxyAPI가 기본 로컬 키가 아닌 별도 키를 쓰는 경우만 필요
-export CLIPROXY_API_KEY="your-local-proxy-key"
+# 필수 — Gemini/OpenAI 레인이 벤더 API를 직접 호출합니다
+export GEMINI_API_KEY="your-gemini-key"   # GOOGLE_API_KEY도 인정됨
+export OPENAI_API_KEY="your-openai-key"
 
 # 선택
 export SYNOD_SESSION_DIR="~/.synod/sessions"
@@ -435,7 +435,7 @@ export SYNOD_RETENTION_DAYS=30
 
 <br/>
 
-Synod는 외부 모델(Gemini, OpenAI)을 **CLI 도구**(`agy-cli`, `cliproxy-cli`, legacy fallback `gemini-3`/`openai-cli`)로만 실행합니다. MCP 라우팅 플러그인이 `ask_codex`나 `ask_gemini`으로 모델 호출을 가로채는 환경에서도, Synod의 다중 방어 체계가 이를 방지합니다:
+Synod는 외부 모델(Gemini, OpenAI)을 **CLI 도구**(`gemini-3`, `openai-cli`; 은퇴한 브리지 `agy-cli`/`cliproxy-cli`)로만 실행합니다. MCP 라우팅 플러그인이 `ask_codex`나 `ask_gemini`으로 모델 호출을 가로채는 환경에서도, Synod의 다중 방어 체계가 이를 방지합니다:
 
 1. **`allowed-tools` 프론트매터** — 스키마 수준에서 MCP 도구 사용을 제한
 2. **마크다운 지시문** — 스킬 진입점과 Phase 0/1에서 명시적으로 금지

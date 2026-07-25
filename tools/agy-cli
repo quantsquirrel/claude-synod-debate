@@ -1,11 +1,11 @@
 #!/bin/sh
-# Synod Gemini wrapper: routes to agy (Antigravity CLI, Gemini 3.5 Flash).
+# Synod Gemini wrapper: routes to agy (Antigravity CLI, Gemini 3.1 Pro).
 #
 # Synod still passes its historical --model/--thinking/--timeout flags.  agy
 # does not expose a non-interactive --model flag, so this wrapper consumes those
-# compatibility flags, keeps Antigravity configured on the Gemini 3.5 Flash
-# family, then calls `agy --print` through `script` to provide the PTY agy
-# expects.
+# compatibility flags, keeps Antigravity configured on the deepest-reasoning
+# Gemini 3.1 Pro (High) family, then calls `agy --print` through `script` to
+# provide the PTY agy expects.
 #
 # Prompt/prefix caching (SYNOD_PROMPT_CACHE): agy delegates all session
 # management and context reuse entirely to Antigravity CLI and the upstream
@@ -56,10 +56,11 @@ if ! command -v agy >/dev/null 2>&1; then
     exit 1
 fi
 
-# If the user already selected any Gemini 3.5 Flash strength in Antigravity,
-# keep that exact strength. Otherwise pin Synod back to Gemini 3.5 Flash.
+# If the user already selected any Gemini 3.1 Pro strength in Antigravity,
+# keep that exact strength. Otherwise pin Synod to Gemini 3.1 Pro (High) —
+# the deepest-reasoning model in the agy Gemini family.
 # Set SYNOD_AGY_MODEL_LABEL to force an exact label, e.g.
-#   SYNOD_AGY_MODEL_LABEL='Gemini 3.5 Flash (Medium)'
+#   SYNOD_AGY_MODEL_LABEL='Gemini 3.1 Pro (High)'
 python3 - <<'PY' 2>/dev/null || true
 import json
 import os
@@ -67,7 +68,7 @@ from pathlib import Path
 
 settings_path = Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
 forced_label = os.environ.get("SYNOD_AGY_MODEL_LABEL", "").strip()
-default_label = "Gemini 3.5 Flash (Medium)"
+default_label = "Gemini 3.1 Pro (High)"
 
 if not settings_path.exists():
     settings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,7 +82,7 @@ else:
 current = str(settings.get("model", "")).strip()
 target = forced_label or default_label
 
-if forced_label or not current.startswith("Gemini 3.5 Flash"):
+if forced_label or not current.startswith("Gemini 3.1 Pro"):
     settings["model"] = target
     settings_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2) + "\n")
 PY

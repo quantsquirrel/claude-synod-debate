@@ -39,7 +39,7 @@ SYNOD_DEBATE_GATE=1 \
 
 ### Prerequisites for live mode
 
-- `tools/agy-cli` and `tools/cliproxy-cli.py` must be accessible and wired to
+- `tools/gemini-3.py` and `tools/openai-cli.py` must be accessible and wired to
   working provider APIs.
 - All three API keys must be set in the environment.
 - The `LiveRunner` class in `strategy_compare.py` is a stub — extend it to
@@ -96,7 +96,7 @@ All tests run fully offline with `MockRunner`.
 > patterns — it validates harness *logic* only, not model performance.
 >
 > Producing real accuracy-vs-cost measurements requires:
-> 1. Wiring `LiveRunner` to shell out to `agy-cli` / `cliproxy-cli`.
+> 1. Wiring `LiveRunner` to shell out to `gemini-3` / `openai-cli`.
 > 2. Valid API keys for Anthropic, Gemini, and OpenAI.
 > 3. Running against the real GSM8K test split (downloaded via
 >    `benchmark/scripts/download_datasets.py`).

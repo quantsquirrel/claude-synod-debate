@@ -1,6 +1,7 @@
 """Tests for synod-setup.py routing defaults."""
 
 import importlib.util
+import os
 from pathlib import Path
 
 
@@ -14,52 +15,59 @@ def load_setup_module():
 
 
 class TestSynodSetupRouting:
-    def test_default_wrappers_include_agy_and_cliproxy(self):
+    def test_direct_clis_are_primary_and_bridges_are_fallbacks(self):
         setup = load_setup_module()
 
-        assert setup.PRIMARY_CLI_TOOLS["agy-cli"] == "agy-cli"
-        assert setup.PRIMARY_CLI_TOOLS["cliproxy-cli"] == "cliproxy-cli.py"
-        assert setup.LEGACY_FALLBACK_CLI_TOOLS["gemini-3"] == "gemini-3.py"
-        assert setup.LEGACY_FALLBACK_CLI_TOOLS["openai-cli"] == "openai-cli.py"
+        assert setup.PRIMARY_CLI_TOOLS["gemini-3"] == "gemini-3.py"
+        assert setup.PRIMARY_CLI_TOOLS["openai-cli"] == "openai-cli.py"
+        # The agy/cliproxy bridges expired ~2026-06-30 — installed, not primary.
+        assert setup.LEGACY_FALLBACK_CLI_TOOLS["agy-cli"] == "agy-cli"
+        assert setup.LEGACY_FALLBACK_CLI_TOOLS["cliproxy-cli"] == "cliproxy-cli.py"
         assert setup.CLI_TOOLS["gemini-3"] == "gemini-3.py"
         assert setup.CLI_TOOLS["openai-cli"] == "openai-cli.py"
+        assert setup.CLI_TOOLS["agy-cli"] == "agy-cli"
 
-    def test_setup_does_not_require_retired_gemini_direct_dependency(self):
+    def test_setup_requires_direct_gemini_dependency(self):
         setup = load_setup_module()
 
-        assert "google-genai" not in setup.REQUIRED_PACKAGES
-        assert setup.OPTIONAL_FALLBACK_PACKAGES["google-genai"] == "google.genai"
+        # gemini-3.py imports google.genai, so it is required again, not optional.
+        assert setup.REQUIRED_PACKAGES["google-genai"] == "google.genai"
         assert setup.REQUIRED_PACKAGES["openai"] == "openai"
         assert setup.REQUIRED_PACKAGES["httpx"] == "httpx"
+        assert "google-genai" not in setup.OPTIONAL_FALLBACK_PACKAGES
 
-    def test_default_model_tests_use_local_bridges(self):
+    def test_default_model_tests_use_direct_api_keys(self):
         setup = load_setup_module()
 
-        assert setup.MODELS_TO_TEST["gemini"]["cli"] == "agy-cli"
-        assert setup.MODELS_TO_TEST["gemini"]["models"] == ["3.5-flash"]
-        assert setup.MODELS_TO_TEST["gemini"]["env_key"] is None
+        assert setup.MODELS_TO_TEST["gemini"]["cli"] == "gemini-3.py"
+        assert setup.MODELS_TO_TEST["gemini"]["models"] == ["pro-latest"]
+        assert setup.MODELS_TO_TEST["gemini"]["env_key"] == "GEMINI_API_KEY"
+        assert setup.MODELS_TO_TEST["gemini"]["env_key_compat"] == "GOOGLE_API_KEY"
 
-        assert setup.MODELS_TO_TEST["openai"]["cli"] == "cliproxy-cli.py"
-        assert setup.MODELS_TO_TEST["openai"]["models"] == ["gpt55fast"]
-        assert setup.MODELS_TO_TEST["openai"]["env_key"] == "CLIPROXY_API_KEY"
-        assert setup.MODELS_TO_TEST["openai"]["optional_env_key"] is True
+        assert setup.MODELS_TO_TEST["openai"]["cli"] == "openai-cli.py"
+        assert setup.MODELS_TO_TEST["openai"]["models"] == ["gpt56sol"]
+        assert setup.MODELS_TO_TEST["openai"]["env_key"] == "OPENAI_API_KEY"
+        # No optional_env_key: a direct lane without a key must fail loudly.
+        assert "optional_env_key" not in setup.MODELS_TO_TEST["openai"]
 
-    def test_setup_targets_exercise_gemini_35_flash_and_cliproxy(self):
+    def test_setup_targets_exercise_direct_pro_latest_and_gpt56sol(self):
         setup = load_setup_module()
 
-        assert ("gemini", "3.5-flash") in setup.TEST_TARGETS
-        assert ("openai", "gpt55fast") in setup.TEST_TARGETS
-        assert ("gemini", "pro") not in setup.TEST_TARGETS
+        assert ("gemini", "pro-latest") in setup.TEST_TARGETS
+        assert ("openai", "gpt56sol") in setup.TEST_TARGETS
+        assert ("gemini", "3.1-pro") not in setup.TEST_TARGETS
+        assert ("openai", "gpt55fast") not in setup.TEST_TARGETS
         assert ("openai", "o3") not in setup.TEST_TARGETS
 
-    def test_model_matrix_preserves_previous_defaults_as_legacy_fallbacks(self):
+    def test_model_matrix_is_authored_against_direct_backend(self):
         import json
 
         matrix_path = Path(__file__).parent.parent / "config" / "model_matrix.json"
         matrix = json.loads(matrix_path.read_text())
 
-        assert matrix["tiers"]["standard"][0]["cli"] == "agy-cli"
-        assert matrix["tiers"]["standard"][1]["cli"] == "cliproxy-cli"
+        assert matrix["tiers"]["standard"][0]["cli"] == "gemini-3"
+        assert matrix["tiers"]["standard"][0]["model"] == "pro-latest"
+        assert matrix["tiers"]["standard"][1]["cli"] == "openai-cli"
         assert matrix["legacy_fallbacks"]["standard"][0] == {
             "provider": "gemini",
             "cli": "gemini-3",
@@ -75,8 +83,35 @@ class TestSynodSetupRouting:
             "timeout_sec": 120,
         }
 
-    def test_key_check_accepts_local_bridge_providers_without_cloud_api_keys(self):
-        setup = load_setup_module()
+    def test_key_check_requires_direct_api_keys(self, monkeypatch):
+        """Direct lanes have no local session to fall back on — a missing key fails.
 
-        assert setup.check_api_key("gemini")[0] is True
-        assert setup.check_api_key("openai")[0] is True
+        resolve_api_key is stubbed so the result does not depend on the developer's
+        own env / ~/.synod/.env / Keychain.
+        """
+        setup = load_setup_module()
+        monkeypatch.setattr(setup, "resolve_api_key", lambda key: None)
+
+        assert setup.check_api_key("gemini") == (False, "GEMINI_API_KEY")
+        assert setup.check_api_key("openai") == (False, "OPENAI_API_KEY")
+
+    def test_key_check_accepts_google_api_key_compat_for_gemini(self, monkeypatch):
+        """GOOGLE_API_KEY satisfies the Gemini lane and is copied to GEMINI_API_KEY."""
+        setup = load_setup_module()
+        monkeypatch.setattr(
+            setup, "resolve_api_key", lambda key: "test-key" if key == "GOOGLE_API_KEY" else None
+        )
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        ok, detail = setup.check_api_key("gemini")
+        assert ok is True
+        assert "GOOGLE_API_KEY" in detail
+        assert os.environ["GEMINI_API_KEY"] == "test-key"
+
+    def test_key_check_prefers_primary_env_key(self, monkeypatch):
+        setup = load_setup_module()
+        monkeypatch.setattr(
+            setup, "resolve_api_key", lambda key: "test-key" if key == "GEMINI_API_KEY" else None
+        )
+
+        assert setup.check_api_key("gemini") == (True, "GEMINI_API_KEY")
