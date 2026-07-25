@@ -18,6 +18,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.7.0] - 2026-07-25
+
+### Changed
+
+- **BREAKING — `direct` is now the default provider backend.** `provider_backend.DEFAULT_BACKEND` flips from `bridge` to `direct`, so both lanes call the vendor APIs with your own keys. **`GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and `OPENAI_API_KEY` are now required**; the previous local-session/proxy auth no longer applies. The `agy-cli` (Antigravity) and `cliproxy-cli` (CLIProxyAPI) bridges expired ~2026-06-30 and are retired — reachable only via `SYNOD_PROVIDER_BACKEND=bridge` for recovery on an old roster. An unknown backend value now falls back to `direct`, so a typo cannot silently route through the retired bridges. Validate with `python3 tools/cutover_check.py`.
+- **BREAKING — model vocabulary.** `config/model_matrix.json` and `config/synod-modes.yaml` are re-authored in direct vocabulary: Gemini `pro-latest` (= `gemini-pro-latest`, currently resolving to `gemini-3.1-pro-preview`) and OpenAI `gpt56sol` (= `gpt-5.6-sol`). The stable alias is used rather than a preview pin, per the 3.0 preview-EOL incident of 2026-03-09. Retired bridge keys (`3.1-pro`, `3.5-flash`, `gpt55fast`) still translate for recovery, and direct keys now map to themselves so direct→direct resolution is idempotent.
+- **Reasoning depth is now split by tier** rather than set globally, because depth and latency trade off directly:
+
+  | Tier | Gemini `thinking` | OpenAI `reasoning` | model timeout |
+  |---|---|---|---|
+  | simple | `low` | (`gpt54mini`, default) | 60s |
+  | standard | `low` | `low` | 120s |
+  | deep | `high` | `high` | 240s |
+  | ultra | `high` | `xhigh` | 1800s |
+
+  `deep`'s OpenAI lane stays at `high`: `xhigh` measures ~191s against a 240s ceiling, too little headroom. Raising it requires lifting that ceiling and the 300s/360s outer/bash layers first.
+- `synod-setup` now treats `gemini-3`/`openai-cli` as the primary CLIs with the bridges as fallbacks, and requires `google-genai` again.
+- CI pins `ruff==0.15.12`. An unpinned ruff silently redefines "formatted" and fails unrelated PRs; 0.16 additionally formats Python code blocks inside Markdown, which this repo has not been through yet.
+
+### Added
+
+- **Native `thinking_level` support for Gemini 3.x** (`tools/gemini-3.py`). `thinking_budget` **saturates** on 3.x, so maximum reasoning depth was previously unreachable — asking for `--thinking max` produced *less* thinking than `high`. Measured on `gemini-3.1-pro-preview` (hard prompt, 2026-07-25), thought tokens / wall clock:
+
+  | Control | Thought tokens | Latency |
+  |---|---|---|
+  | `thinking_budget=200` | 1,153 | 22.3s |
+  | `thinking_budget=2000` | 5,766 | 55.5s |
+  | `thinking_budget=10000` | 5,137 | 52.6s — no gain, saturated |
+  | `thinking_level=LOW` | 2,140 | 30.0s |
+  | `thinking_level=HIGH` | **8,473** | **74.8s** |
+
+  `HIGH` is the deepest level the API accepts; `max` collapses to it (a literal `thinking_level="max"` is a 400), and level/budget are mutually exclusive. The legacy 2.5 family keeps `thinking_budget`.
+- **SDK capability gating** — `sdk_supports_thinking_level()` probes `ThinkingConfig.model_fields`, because an older `google-genai` rejects the field at *construction* time with a pydantic `ValidationError` before any network call. `is_thinking_level_model()` (model family) and `uses_thinking_level()` (family **and** SDK) are now separate. An SDK too old to reach maximum depth warns on stderr rather than silently degrading to the saturating budget knob.
+- **`gpt-5.6-sol` with `xhigh` reasoning** (`tools/openai-cli.py`). Measured on the same prompt: `low` 1,024 reasoning tokens / 31.6s · `high` 6,656 / 120.4s · `xhigh` 11,548 / 190.6s. `XHIGH_MODELS` records which models accept `xhigh` (gpt-5.6-sol, gpt-5.5, gpt-5.4, gpt-5.4-mini, o3); `clamp_reasoning()` degrades `xhigh`→`high` with a stderr notice for models that reject it (gpt-5-mini, gpt-4o), so one shared tier config never 400s on a subset of models.
+
+### Fixed
+
+- **`tiers.fast` paired `thinking: high` with a 60s model timeout** — at 74.8s measured, a guaranteed timeout. Now `low`.
+- **`RETRY_LEVELS` omitted `max`** in `gemini-3.py`, so a timeout at `max` fell through to index 1 and skipped two levels straight to `low` instead of stepping down to `high`. Same fix on the OpenAI side, where `xhigh` now leads the ladder.
+- **Shell/Python backend defaults disagreed.** `${SYNOD_PROVIDER_BACKEND:-bridge}` in `SKILL.md` and `synod-phase1-solver.md` is now `:-direct`, matching `DEFAULT_BACKEND`; a mismatch there desyncs the CLI lane from the model vocabulary.
+- **mypy aborted before reaching `tools/`.** `python_version = "3.9"` also applies to third-party sources mypy follows into, and a newer `anyio` (transitive via `httpx`) uses `match` statements. Added a `follow_imports = "skip"` override for `anyio`. With mypy reaching the code again it flagged a real issue: `ThinkingConfig.thinking_level` is typed as the enum, not `str`.
+- `README.ko.md` had drifted out of sync with `README.md` and still documented Gemini 3.5 Flash.
+- `.gitignore` now covers `.omo/`, `.claude/eval/`, and `.playwright-mcp/`.
+
+---
+
 ## [3.6.0] - 2026-05-09
 
 ### Added
