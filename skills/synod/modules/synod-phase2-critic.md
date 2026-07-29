@@ -37,15 +37,15 @@ BASH_TIMEOUT=$(python3 "${TOOLS_DIR}/synod_config.py" timeouts bash  --tier "$_M
 BASH_TIMEOUT_MS=$((BASH_TIMEOUT * 1000))
 ```
 
-## Step 2.0: Deliberation Anonymization (SYNOD_ANONYMIZE=1 only)
+## Step 2.0: Deliberation Anonymization (default ON since v3.8)
 
-> **Flag-gated — skip entirely when `SYNOD_ANONYMIZE` is unset or `"0"` (default).**
-> When the flag is off, all branding and labelling behaves exactly as before — no change.
+> **Default-ON — set `SYNOD_ANONYMIZE=0` to opt out.**
+> When opted out, all branding and labelling behaves exactly as before — no change.
 
-When `SYNOD_ANONYMIZE=1`:
+Unless `SYNOD_ANONYMIZE=0`:
 
 ```bash
-if [[ "${SYNOD_ANONYMIZE:-0}" == "1" ]]; then
+if [[ "${SYNOD_ANONYMIZE:-1}" == "1" ]]; then
   # Re-hydrate the alias map exported by Phase 1.
   # SYNOD_ANON_MAP is a JSON string: {"claude":"Agent-1","gemini":"Agent-2","openai":"Agent-3"}
   if [[ -z "${SYNOD_ANON_MAP:-}" ]]; then

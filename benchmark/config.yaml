@@ -1,13 +1,14 @@
 # Synod v3.0 Benchmark Configuration
 version: "1.0.0"
 
-# Model Configuration
+# Model Configuration (v3.8: current direct-API roster — was the pre-cutover
+# gpt-4o / claude-sonnet-4 / gemini-2.0-flash set until 2026-07)
 models:
-  claude: "claude-sonnet-4-20250514"
-  gemini: "gemini-2.0-flash"
+  claude: "claude-sonnet-5"
+  gemini: "gemini-3.1-pro-preview"
   openai:
-    primary: "gpt-4o"
-    expensive: "o3"
+    primary: "gpt-5.6-sol"
+    expensive: "gpt-5.6-sol"  # xhigh reasoning; former o3 slot
 
 # Benchmark Settings
 benchmarks:
@@ -42,11 +43,10 @@ output:
 # Synod Settings
 synod:
   mode: "general"  # review/design/debug/general
-  rounds: 3  # 2 or 3
 
 # Baselines to run
 baselines:
   claude_only: true
-  gpt4o_only: true
+  openai_only: true
   majority_vote: true
   self_consistency: false  # Expensive

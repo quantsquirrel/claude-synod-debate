@@ -291,9 +291,9 @@ export MISTRAL_API_KEY="your-mistral-key"
 
 <div align="center">
 
-## 📜 ACADEMIC FOUNDATION
+## 📜 RESEARCH PROVENANCE
 
-*Not just another wrapper — peer-reviewed deliberation protocols*
+*Where each mechanism's design was borrowed from — cited numbers are the papers' results on their benchmarks, **not** measured Synod performance (Synod's own benchmark harness lives in `benchmark/`)*
 
 </div>
 
@@ -301,13 +301,18 @@ export MISTRAL_API_KEY="your-mistral-key"
 
 <div align="center">
 
-| Protocol | Source | What Synod Implements |
+| Protocol | Source | What Synod Borrows |
 |:--------:|:-------|:----------------------|
-| **ReConcile** | [ACL 2024](https://arxiv.org/abs/2309.13007) | 3-round convergence (>95% quality gains) |
+| **ReConcile** | [ACL 2024](https://arxiv.org/abs/2309.13007) | Multi-round convergence structure (the paper reports >95% of its quality gains within 3 rounds — its result, not ours) |
 | **AgentsCourt** | [arXiv 2024](https://arxiv.org/abs/2408.08089) | Judge/Defense/Prosecutor structure |
 | **ConfMAD** | [arXiv 2025](https://arxiv.org/abs/2502.06233) | Confidence-aware soft defer |
-| **Free-MAD** | Research | Anti-conformity instructions |
-| **SID** | Research | Self-signals driven confidence |
+| **DOWN** | [arXiv 2025](https://arxiv.org/abs/2504.05047) | Skip-debate-on-consensus gate (Phase 1.5, default-on since v3.8) |
+| **CortexDebate** | see Trust Equation below | CRIS trust formula |
+
+In-house heuristics (no external citation): SID self-signal XML contract,
+anti-conformity prompt instructions. v3.8 demoted self-reported confidence
+from control signal to display/floor-only, following
+[When Two LLMs Debate (arXiv:2505.19184)](https://arxiv.org/abs/2505.19184).
 
 </div>
 
@@ -493,7 +498,7 @@ No additional configuration needed — protection is automatic.
 **MIT License** · Copyright © 2026 quantsquirrel
 
 *Built on the shoulders of*<br/>
-**ReConcile** · **AgentsCourt** · **ConfMAD** · **Free-MAD** · **SID**
+**ReConcile** · **AgentsCourt** · **ConfMAD** · **DOWN** · **CortexDebate**
 
 <br/>
 

@@ -199,10 +199,15 @@ Defined in `config/synod-modes.yaml`. Output templates in `config/synod-template
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `SYNOD_V2_AUTO_CLASSIFY` | `1` | Auto mode/complexity classification |
-| `SYNOD_V2_DYNAMIC_ROUNDS` | `1` | Dynamic round count based on convergence |
 | `SYNOD_V2_ADAPTIVE_TIMEOUT` | `0` | P99-based timeout adjustment |
+| `SYNOD_DEBATE_GATE` | `1` | Phase 1.5 consensus gate (default-on since v3.8; `0` = always full debate) |
+| `SYNOD_ANONYMIZE` | `1` | Deliberation anonymization (default-on since v3.8) |
 | `SYNOD_ENABLE_GROK` | required | Enable Grok provider |
 | `SYNOD_ENABLE_MISTRAL` | required | Enable Mistral provider |
+
+Removed in v3.8: `SYNOD_V2_DYNAMIC_ROUNDS` (round count was a session label, never
+execution — complexity now feeds tier selection only; adaptive depth lives in the
+debate gate) and the Phase 1 confidence-based early exit.
 
 ---
 

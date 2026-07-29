@@ -24,14 +24,36 @@ class BaselineResult:
     error: Optional[str] = None
 
 
+# v3.8: roster is read from config.yaml (single source of truth) so the
+# baselines track the live direct-API cutover instead of the retired
+# gpt-4o / claude-sonnet-4 / gemini-2.0-flash set.
+def _load_model_roster() -> dict:
+    import yaml
+
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
+    try:
+        with open(config_path) as f:
+            models = (yaml.safe_load(f) or {}).get("models", {})
+    except (OSError, Exception):
+        models = {}
+    return {
+        "claude": models.get("claude", "claude-sonnet-5"),
+        "gemini": models.get("gemini", "gemini-3.1-pro-preview"),
+        "openai": (models.get("openai") or {}).get("primary", "gpt-5.6-sol"),
+    }
+
+
 class BaselineRunner:
     """Run baseline methods for benchmark comparison"""
 
     def __init__(self):
+        roster = _load_model_roster()
+        self.claude_model = roster["claude"]
+        self.openai_model = roster["openai"]
         self.anthropic = Anthropic()
         self.openai = OpenAI()
         genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        self.gemini = genai.GenerativeModel("gemini-2.0-flash")
+        self.gemini = genai.GenerativeModel(roster["gemini"])
 
     def _extract_answer(self, response: str) -> Optional[str]:
         """Extract numeric answer from response"""
@@ -57,7 +79,7 @@ class BaselineRunner:
         start = time.time()
         try:
             response = self.anthropic.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=self.claude_model,
                 max_tokens=1024,
                 messages=[
                     {
@@ -90,12 +112,12 @@ class BaselineRunner:
                 error=str(e),
             )
 
-    def run_gpt4o_only(self, question: str) -> BaselineResult:
-        """Run GPT-4o-only baseline"""
+    def run_openai_only(self, question: str) -> BaselineResult:
+        """Run OpenAI-only baseline (model from config.yaml)"""
         start = time.time()
         try:
             response = self.openai.chat.completions.create(
-                model="gpt-4o",
+                model=self.openai_model,
                 max_tokens=1024,
                 messages=[
                     {
@@ -106,13 +128,13 @@ class BaselineRunner:
             )
             text = response.choices[0].message.content
             tokens = response.usage.total_tokens
-            # GPT-4o pricing: $2.5/$10 per 1M tokens
+            # Approximate frontier-tier pricing: $2.5/$10 per 1M tokens
             cost = (
                 response.usage.prompt_tokens * 2.5 + response.usage.completion_tokens * 10
             ) / 1_000_000
 
             return BaselineResult(
-                method="gpt4o_only",
+                method="openai_only",
                 response=text,
                 extracted_answer=self._extract_answer(text),
                 elapsed_seconds=time.time() - start,
@@ -121,7 +143,7 @@ class BaselineRunner:
             )
         except Exception as e:
             return BaselineResult(
-                method="gpt4o_only",
+                method="openai_only",
                 response="",
                 extracted_answer=None,
                 elapsed_seconds=time.time() - start,
@@ -167,12 +189,12 @@ class BaselineRunner:
 
         # Get answers from all three
         claude_result = self.run_claude_only(question)
-        gpt4o_result = self.run_gpt4o_only(question)
+        openai_result = self.run_openai_only(question)
         gemini_result = self.run_gemini_only(question)
 
         answers = [
             claude_result.extracted_answer,
-            gpt4o_result.extracted_answer,
+            openai_result.extracted_answer,
             gemini_result.extracted_answer,
         ]
 
@@ -185,13 +207,13 @@ class BaselineRunner:
             majority_answer = None
 
         total_tokens = (
-            claude_result.tokens_used + gpt4o_result.tokens_used + gemini_result.tokens_used
+            claude_result.tokens_used + openai_result.tokens_used + gemini_result.tokens_used
         )
-        total_cost = claude_result.cost_usd + gpt4o_result.cost_usd + gemini_result.cost_usd
+        total_cost = claude_result.cost_usd + openai_result.cost_usd + gemini_result.cost_usd
 
         response_summary = f"""
 Claude: {claude_result.extracted_answer}
-GPT-4o: {gpt4o_result.extracted_answer}
+OpenAI: {openai_result.extracted_answer}
 Gemini: {gemini_result.extracted_answer}
 Majority: {majority_answer}
 """
@@ -212,7 +234,7 @@ def run_baselines(question: str) -> dict:
 
     results = {
         "claude_only": runner.run_claude_only(question),
-        "gpt4o_only": runner.run_gpt4o_only(question),
+        "openai_only": runner.run_openai_only(question),
         "majority_vote": runner.run_majority_vote(question),
     }
 

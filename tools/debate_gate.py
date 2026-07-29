@@ -10,6 +10,15 @@ multi-agent debate when round-1 solvers already agree, achieving equal or better
 accuracy at ~1.5 vs 3-9 model calls.  This gate inspects already-parsed solver
 signals — no extra model calls, CLI-only.
 
+v3.8: the gate is keyed on CLAIM AGREEMENT, not self-reported confidence.
+Verbal self-confidence is near-uninformative and escalates across debate
+rounds regardless of merit ("When Two LLMs Debate" arXiv:2505.19184), so the
+composite score no longer folds in can_exit/high-confidence fractions; a single
+modest confidence floor remains as a fail-closed guard (its only cost is fewer
+skips).  Deep/ultra-tier problems always run the full debate — hard contested
+problems are where debate pays ("Revisiting MAD as Test-Time Scaling"
+arXiv:2505.22960).
+
 Agreement measurement is a LEXICAL + SIGNAL PROXY.  It compares the primary
 claim (first semantic_focus item) of each solver after lowercasing, punctuation
 stripping, and trivial stopword removal, then averages pairwise Jaccard
@@ -22,19 +31,15 @@ NEVER skips debate due to malformed data.
 
 Environment overrides
 ---------------------
-SYNOD_DEBATE_GATE            '1' enables gate; default '0' (observe-only)
+SYNOD_DEBATE_GATE            default '1' (enabled); set '0' to force the full
+                             legacy Phase 2-3 path on every run
 SYNOD_GATE_AGREE_THRESHOLD   float 0-1, default 0.80
-SYNOD_GATE_MIN_CONF          int 0-100, default 80
-SYNOD_GATE_HIGH_CONF         int 0-100, default 85
-SYNOD_GATE_MIN_TRUST         float 0+, default 1.0  (min per-solver trust_score;
-                             absent trust_score defaults to 1.0 so a solver
-                             with no trust field still passes this guard)
-SYNOD_GATE_MIN_CANEXIT       float 0-1, default 0.5 (min fraction of solvers
-                             that must self-report can_exit=True)
+SYNOD_GATE_MIN_CONF          int 0-100, default 60 (fail-closed floor only —
+                             NOT an agreement signal)
 
 Usage
 -----
-  debate_gate.py --signals-dir <round-1-solver-dir>
+  debate_gate.py --signals-dir <round-1-solver-dir> [--tier deep]
   debate_gate.py --signals-json '[{"model":"gpt-4o","confidence":90,...},...]'
 """
 
@@ -53,10 +58,12 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _DEFAULT_AGREE_THRESHOLD = 0.80
-_DEFAULT_MIN_CONF = 80
-_DEFAULT_HIGH_CONF = 85
-_DEFAULT_MIN_TRUST = 1.0
-_DEFAULT_MIN_CANEXIT = 0.5
+_DEFAULT_MIN_CONF = 60
+_DEFAULT_HIGH_CONF = 85  # reporting-only: frac_high_conf observability signal
+
+# Tiers that always run the full debate regardless of agreement. Debate pays on
+# hard contested problems; skipping is for the easy-consensus majority.
+_FORCE_DEBATE_TIERS = frozenset({"deep", "ultra"})
 
 _STOPWORDS = frozenset(
     {
@@ -318,7 +325,7 @@ def _weighted_vote(signals: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def decide(signals: list[dict]) -> dict[str, Any]:
+def decide(signals: list[dict], tier: str | None = None) -> dict[str, Any]:
     """Evaluate solver signals and decide whether to skip or run debate.
 
     Parameters
@@ -329,13 +336,15 @@ def decide(signals: list[dict]) -> dict[str, Any]:
         can_exit      (bool)
         semantic_focus (list[str])
         trust_score   (float, optional — defaults to 1.0)
+    tier : optional classifier tier ('fast'|'standard'|'deep'|'ultra').
+        Deep/ultra always run the full debate regardless of agreement.
 
     Returns
     -------
     dict with:
         decision        : 'skip_debate' | 'run_debate'
-        agreement_score : float 0-1
-        vote_confidence : float (weighted consensus confidence)
+        agreement_score : float 0-1 (claim agreement — lexical, negation-aware)
+        vote_confidence : float (weighted consensus confidence, reporting-only)
         dominant_model  : str | None
         n_solvers       : int
         rationale       : str
@@ -344,10 +353,8 @@ def decide(signals: list[dict]) -> dict[str, Any]:
     # --- Read thresholds from env (allow test/runtime override) ---
     agree_threshold = _env_float("SYNOD_GATE_AGREE_THRESHOLD", _DEFAULT_AGREE_THRESHOLD)
     min_conf = _env_int("SYNOD_GATE_MIN_CONF", _DEFAULT_MIN_CONF)
-    high_conf = _env_int("SYNOD_GATE_HIGH_CONF", _DEFAULT_HIGH_CONF)
-    min_trust_thresh = _env_float("SYNOD_GATE_MIN_TRUST", _DEFAULT_MIN_TRUST)
-    min_canexit = _env_float("SYNOD_GATE_MIN_CANEXIT", _DEFAULT_MIN_CANEXIT)
-    gate_enabled = os.environ.get("SYNOD_DEBATE_GATE", "0").strip() == "1"
+    high_conf = _DEFAULT_HIGH_CONF
+    gate_enabled = os.environ.get("SYNOD_DEBATE_GATE", "1").strip() != "0"
 
     # --- Fail-safe: bad/empty input -> run_debate ---
     if not signals or not isinstance(signals, list):
@@ -375,16 +382,15 @@ def decide(signals: list[dict]) -> dict[str, Any]:
     frac_ce = sum(1 for s in signals if s.get("can_exit", False)) / n
     frac_hc = sum(1 for s in signals if _safe_float(s.get("confidence", 0)) >= high_conf) / n
 
-    # Composite agreement score
-    agreement_score = round(0.5 * ca + 0.3 * frac_ce + 0.2 * frac_hc, 4)
+    # v3.8: agreement is claim agreement alone. Self-reported can_exit /
+    # high-confidence fractions are observability signals, not gate inputs.
+    agreement_score = round(ca, 4)
 
-    # Weighted vote for confidence and dominant model
+    # Weighted vote for confidence and dominant model (reporting-only)
     vote_result = _weighted_vote(signals)
     vote_confidence = vote_result["final_confidence"]
     dominant_model = vote_result["dominant_model"]
 
-    # Additional derived values for hardened skip criteria
-    min_trust = min(_safe_float(s.get("trust_score", 1.0), 0.0) for s in signals)
     primary_sufficient = all(len(_tokenize(fl[0])) >= 2 if fl else False for fl in focus_lists)
 
     signal_components = {
@@ -392,10 +398,13 @@ def decide(signals: list[dict]) -> dict[str, Any]:
         "frac_can_exit": round(frac_ce, 4),
         "frac_high_conf": round(frac_hc, 4),
         "min_confidence": min_confidence_val,
-        "min_trust": round(min_trust, 4),
         "vote_confidence": vote_confidence,
         "primary_sufficient": primary_sufficient,
     }
+
+    would_skip = _would_skip(
+        agreement_score, min_confidence_val, n, agree_threshold, min_conf, primary_sufficient
+    )
 
     # --- Gate-off path: compute + report, but always run_debate ---
     if not gate_enabled:
@@ -407,33 +416,32 @@ def decide(signals: list[dict]) -> dict[str, Any]:
             "n_solvers": n,
             "rationale": (
                 "gate disabled (SYNOD_DEBATE_GATE=0); "
-                f"would have {'skipped' if _would_skip(agreement_score, min_confidence_val, n, agree_threshold, min_conf, vote_confidence, high_conf, min_trust, min_trust_thresh, frac_ce, min_canexit, primary_sufficient) else 'debated'} "
-                "— set SYNOD_DEBATE_GATE=1 to enable"
+                f"would have {'skipped' if would_skip else 'debated'} "
+                "— unset SYNOD_DEBATE_GATE (or set to 1) to enable"
+            ),
+            "signals": signal_components,
+        }
+
+    # --- Deep/ultra tier: always run the full debate ---
+    if tier in _FORCE_DEBATE_TIERS:
+        return {
+            "decision": "run_debate",
+            "agreement_score": agreement_score,
+            "vote_confidence": vote_confidence,
+            "dominant_model": dominant_model,
+            "n_solvers": n,
+            "rationale": (
+                f"tier={tier} forces full debate — hard contested problems are "
+                "where debate pays (arXiv:2505.22960)"
             ),
             "signals": signal_components,
         }
 
     # --- Gate-on: apply skip criteria ---
-    if _would_skip(
-        agreement_score,
-        min_confidence_val,
-        n,
-        agree_threshold,
-        min_conf,
-        vote_confidence,
-        high_conf,
-        min_trust,
-        min_trust_thresh,
-        frac_ce,
-        min_canexit,
-        primary_sufficient,
-    ):
+    if would_skip:
         rationale = (
             f"agreement_score={agreement_score:.3f} >= {agree_threshold}, "
             f"min_confidence={min_confidence_val:.0f} >= {min_conf}, "
-            f"vote_confidence={vote_confidence:.1f} >= {high_conf}, "
-            f"min_trust={min_trust:.3f} >= {min_trust_thresh}, "
-            f"frac_can_exit={frac_ce:.2f} >= {min_canexit}, "
             f"primary_sufficient=True, "
             f"n_solvers={n} >= 2"
         )
@@ -452,12 +460,6 @@ def decide(signals: list[dict]) -> dict[str, Any]:
             reasons.append(f"agreement_score={agreement_score:.3f} < {agree_threshold}")
         if min_confidence_val < min_conf:
             reasons.append(f"min_confidence={min_confidence_val:.0f} < {min_conf}")
-        if vote_confidence < high_conf:
-            reasons.append(f"vote_confidence={vote_confidence:.1f} < {high_conf}")
-        if min_trust < min_trust_thresh:
-            reasons.append(f"min_trust={min_trust:.3f} < {min_trust_thresh}")
-        if frac_ce < min_canexit:
-            reasons.append(f"frac_can_exit={frac_ce:.2f} < {min_canexit}")
         if not primary_sufficient:
             reasons.append("primary_sufficient=False (trivial single-token primary claim)")
         if n < 2:
@@ -479,31 +481,19 @@ def _would_skip(
     n: int,
     agree_threshold: float,
     min_conf: int,
-    vote_confidence: float,
-    high_conf: int,
-    min_trust: float,
-    min_trust_thresh: float,
-    frac_ce: float,
-    min_canexit: float,
     primary_sufficient: bool,
 ) -> bool:
     """Return True only when ALL skip conditions are met.
 
     Conditions (all must hold):
-      1. agreement_score >= agree_threshold
-      2. min_confidence >= min_conf  (every solver surface confidence)
-      3. vote_confidence >= high_conf  (weighted vote must also be high)
-      4. min_trust >= min_trust_thresh  (weakest solver trust floor)
-      5. frac_can_exit >= min_canexit  (majority self-report done)
-      6. primary_sufficient  (all primary claims tokenize to >= 2 tokens)
-      7. n >= 2
+      1. agreement_score >= agree_threshold  (claim agreement — the primary signal)
+      2. min_confidence >= min_conf  (modest fail-closed floor, default 60)
+      3. primary_sufficient  (all primary claims tokenize to >= 2 tokens)
+      4. n >= 2
     """
     return (
         agreement_score >= agree_threshold
         and min_confidence_val >= min_conf
-        and vote_confidence >= high_conf
-        and min_trust >= min_trust_thresh
-        and frac_ce >= min_canexit
         and primary_sufficient
         and n >= 2
     )
@@ -576,6 +566,12 @@ def main():
         metavar="JSON",
         help="Inline JSON list of solver signal dicts.",
     )
+    parser.add_argument(
+        "--tier",
+        default=None,
+        metavar="TIER",
+        help="Classifier tier (fast|standard|deep|ultra). deep/ultra force run_debate.",
+    )
 
     args = parser.parse_args()
 
@@ -605,7 +601,7 @@ def main():
         print(json.dumps(result, indent=2))
         sys.exit(0)
 
-    result = decide(signals)
+    result = decide(signals, tier=args.tier)
     print(json.dumps(result, indent=2))
     sys.exit(0)
 

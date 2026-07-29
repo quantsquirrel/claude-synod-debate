@@ -28,9 +28,14 @@
 | `creative` | Ideas, brainstorming, naming, design concepts |
 | `general` | Questions, explanations, comparisons |
 
-## Step 0.3: Determine Complexity & Round Count (v2.0)
+## Step 0.3: Determine Complexity (v3.8 — feeds tier, not rounds)
 
-**v2.0:** When dynamic rounds is enabled (`SYNOD_V2_DYNAMIC_ROUNDS=1`), complexity and round count are determined by `synod-classifier.py`. **v2.1:** Thresholds are loaded from `config/synod-modes.yaml` via `synod_config.py`:
+Complexity drives **tier selection only** (models, reasoning depth, timeouts — Step 0.4).
+The v2.0 complexity→rounds mapping was removed in v3.8: the phase structure is fixed
+(solver → gate → critic → defense → synthesis), round count never changed execution,
+and adaptive depth control now lives in the Phase 1.5 debate gate (skip Phases 2–3 on
+consensus; deep tier always debates). **v2.1:** Thresholds are loaded from
+`config/synod-modes.yaml` via `synod_config.py`:
 
 ```bash
 # Load complexity thresholds from config (v2.1)
@@ -40,32 +45,21 @@ MEDIUM_MAX=$(python3 "${TOOLS_DIR}/synod_config.py" complexity medium max_score 
 
 **Fallback Reference** (used when config unavailable):
 
-| Complexity | Indicators | Rounds |
-|------------|------------|--------|
-| `simple` | Single concept, short answer expected, <50 words input | 2 |
-| `medium` | Multiple aspects, moderate depth, 50-200 words input | 3 |
-| `complex` | System-level, many dependencies, >200 words or multi-file | 4 |
+| Complexity | Indicators | Tier |
+|------------|------------|------|
+| `simple` | Single concept, short answer expected, <50 words input | fast |
+| `medium` | Multiple aspects, moderate depth, 50-200 words input | standard |
+| `complex` | System-level, many dependencies, >200 words or multi-file | deep |
 
 ```bash
-if [[ "${SYNOD_V2_DYNAMIC_ROUNDS:-1}" == "1" && -n "$CLASSIFY_RESULT" ]]; then
+if [[ -n "$CLASSIFY_RESULT" ]]; then
     COMPLEXITY=$(echo "$CLASSIFY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['complexity'])")
-    AUTO_ROUNDS=$(echo "$CLASSIFY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['rounds'])")
     PROBLEM_TYPE=$(echo "$CLASSIFY_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('problem_type','general'))")
 
     echo "[ProblemType] ${PROBLEM_TYPE}" >&2
-
-    # design/idea modes get minimum 3 rounds
-    if [[ "$MODE" == "design" || "$MODE" == "idea" ]]; then
-        TOTAL_ROUNDS=$(( AUTO_ROUNDS > 3 ? AUTO_ROUNDS : 3 ))
-    else
-        TOTAL_ROUNDS=$AUTO_ROUNDS
-    fi
-
-    echo "[Rounds] Complexity: ${COMPLEXITY} → Rounds: ${TOTAL_ROUNDS}" >&2
+    echo "[Complexity] ${COMPLEXITY}" >&2
 fi
 ```
-
-**Fallback:** If classifier is unavailable or dynamic rounds is disabled, use the static table below.
 
 ## Step 0.4: Select Model Configuration
 
@@ -110,11 +104,6 @@ GEMINI_MODEL=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models gemini 
 GEMINI_THINKING=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models gemini thinking 2>/dev/null)
 OPENAI_MODEL=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models openai model 2>/dev/null)
 OPENAI_REASONING=$(python3 "${TOOLS_DIR}/synod_config.py" modes $MODE models openai reasoning 2>/dev/null)
-BASE_ROUNDS=$(python3 -c "
-import sys; sys.path.insert(0,'${TOOLS_DIR}')
-from synod_config import get_rounds
-print(get_rounds('$MODE')['base'])
-" 2>/dev/null)
 
 # Fallback to defaults if config unavailable. thinking stays 'low' to match the
 # standard tier; only deep/ultra raise it to 'high' (~75s on gemini-3.1-pro).
@@ -122,7 +111,6 @@ GEMINI_MODEL="${GEMINI_MODEL:-pro-latest}"
 GEMINI_THINKING="${GEMINI_THINKING:-low}"
 OPENAI_MODEL="${OPENAI_MODEL:-gpt56sol}"
 OPENAI_REASONING="${OPENAI_REASONING:-}"
-BASE_ROUNDS="${BASE_ROUNDS:-3}"
 ```
 
 **v3.1:** Apply tier-based model override using classifier's tier output:
@@ -211,13 +199,13 @@ fi
 
 Select configurations (overridden by setup results when available, **fallback reference** when config unavailable):
 
-| Mode | Gemini Model | Gemini Thinking | OpenAI Model | OpenAI Reasoning | Base Rounds | Dynamic |
-|------|--------------|-----------------|--------------|------------------|-------------|---------|
-| `review` | pro-latest | low | gpt56sol | low | 3 | Yes (2-4) |
-| `design` | pro-latest | low | gpt56sol | low | 4 | Yes (3-4) |
-| `debug` | pro-latest | low | gpt56sol | low | 3 | Yes (2-4) |
-| `idea` | pro-latest | low | gpt56sol | low | 4 | Yes (3-4) |
-| `general` | pro-latest | low | gpt56sol | low | 3 | Yes (2-4) |
+| Mode | Gemini Model | Gemini Thinking | OpenAI Model | OpenAI Reasoning |
+|------|--------------|-----------------|--------------|------------------|
+| `review` | pro-latest | low | gpt56sol | low |
+| `design` | pro-latest | low | gpt56sol | low |
+| `debug` | pro-latest | low | gpt56sol | low |
+| `idea` | pro-latest | low | gpt56sol | low |
+| `general` | pro-latest | low | gpt56sol | low |
 
 Mode defaults carry `thinking: low`; the **tier** raises it. `deep`/`ultra` use
 `thinking: high` — the deepest level the Gemini API accepts (~8.5k thought tokens,
@@ -249,8 +237,6 @@ if [[ "$SETUP_OVERRIDE" == "true" ]]; then
     fi
 fi
 ```
-
-**Note:** When `SYNOD_V2_DYNAMIC_ROUNDS=1`, round count is determined by complexity analysis from Step 0.3. The "Base Rounds" column is the fallback when dynamic rounds is disabled.
 
 **Note:** Run `/synod-setup` to generate `~/.synod/setup-result.json`. Without it, the static table above is used as-is.
 
@@ -337,12 +323,12 @@ Write `${SESSION_DIR}/meta.json`:
   "mode": "{MODE}",
   "problem_type": "{coding|math|creative|general}",
   "complexity": "{simple|medium|complex}",
+  "tier": "{fast|standard|deep|ultra}",
   "problem_summary": "{First 200 chars of PROBLEM}",
   "model_config": {
     "gemini": {"model": "{pro-latest}", "thinking": "{minimal|low|medium|high}"},
     "openai": {"model": "{gpt56sol|gpt54mini}", "reasoning": "{null|low|medium|high|xhigh}"}
-  },
-  "total_rounds": {3|4}
+  }
 }
 ```
 
@@ -359,10 +345,10 @@ Write initial `${SESSION_DIR}/status.json`:
 
 **Announce to user:**
 ```
-[Synod v3.1] 세션: {SESSION_ID}
+[Synod v3.8] 세션: {SESSION_ID}
 모드: {MODE} (auto-classified, confidence: {CLASSIFY_CONFIDENCE}) | 티어: {TIER} | 복잡도: {complexity}
 모델: Gemini {model} ({thinking}) + OpenAI {model} ({reasoning})
-라운드: {total_rounds} {dynamic: true/false}
+게이트: {TIER가 deep/ultra ? "전체 토론 고정" : "합의 시 Phase 2-3 생략 (debate gate)"}
 Setup: {SETUP_OVERRIDE ? "적용됨 (setup-result.json)" : "미설정 - /synod-setup 권장"}
 ```
 

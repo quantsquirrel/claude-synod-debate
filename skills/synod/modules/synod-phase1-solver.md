@@ -37,15 +37,17 @@ directly controls reasoning depth (and therefore latency).
 
 ---
 
-## Step 1.0: Deliberation Anonymization Setup (SYNOD_ANONYMIZE=1 only)
+## Step 1.0: Deliberation Anonymization Setup (default ON since v3.8)
 
-> **Flag-gated — skip entirely when `SYNOD_ANONYMIZE` is unset or `"0"` (default).**
-> When the flag is off, all branding and labelling behaves exactly as in v3.6 — no change.
+> **Default-ON — set `SYNOD_ANONYMIZE=0` to opt out.**
+> Anonymization prevents brand-deference/sycophancy in the stateless external
+> CLIs (arXiv:2510.07517). Note the in-session Claude judge cannot be blinded
+> by this — it builds the alias map itself; the benefit is for Gemini/OpenAI.
 
-When `SYNOD_ANONYMIZE=1`:
+Unless `SYNOD_ANONYMIZE=0`:
 
 ```bash
-if [[ "${SYNOD_ANONYMIZE:-0}" == "1" ]]; then
+if [[ "${SYNOD_ANONYMIZE:-1}" == "1" ]]; then
   # Build a real->alias map for the active roster so no phase sees which
   # provider authored which claim (arXiv:2510.07517 — identity cues drive
   # sycophantic premature consensus).
@@ -462,11 +464,14 @@ Update status.json:
 }
 ```
 
-## Step 1.6: Check Early Exit Condition
+## Step 1.6: Phase End (confidence early-exit removed in v3.8)
 
-If ALL models have `can_exit: true` AND confidence scores are all >= 90:
-- Skip to PHASE 4: Synthesis (see `synod-phase4-synthesis.md`)
-- Note: "조기 합의에 도달했습니다 - 토론 라운드를 건너뜁니다"
+> The pre-v3.8 early exit (all `can_exit=true` AND all confidence ≥ 90) is
+> **removed**. Verbal self-confidence is near-uninformative as a control signal
+> (arXiv:2505.19184), so skipping Phases 2–3 is decided solely by the Phase 1.5
+> debate gate on **claim agreement** (`synod-phase1-5-debate-gate.md`). SID
+> confidence blocks are still collected — they are display/observability data
+> and feed the gate's modest fail-closed floor, nothing more.
 
 ```bash
 # Emit phase end
@@ -477,7 +482,7 @@ synod_progress '{"event":"phase_end","phase":1}'
 
 > **⛔ HALT CHECK — Do NOT proceed without passing this verification.**
 
-Before moving to Phase 2 or early exit, verify that external models were actually called:
+Before moving to Phase 1.5 (debate gate) or Phase 2, verify that external models were actually called:
 
 ```bash
 # MANDATORY verification — responses must exist as real files
@@ -496,11 +501,11 @@ if [[ "$VERIFY_PASS" != "true" ]]; then
   echo "[HALT] Phase 1 verification FAILED. External models were not called." >&2
   echo "[HALT] Re-execute Step 1.2 with actual Bash CLI commands." >&2
   # Update status to reflect failure
-  # DO NOT proceed to Phase 2 or early exit
+  # DO NOT proceed to Phase 1.5 or Phase 2
   exit 1
 fi
 ```
 
 **If this check fails, you MUST go back to Step 1.2 and execute the actual Bash commands.** Do not proceed to Phase 2 or Phase 4 without real external model responses saved as files.
 
-**Next Phase:** Proceed to Phase 2 (see `synod-phase2-critic.md`)
+**Next Phase:** Proceed to Phase 1.5 debate gate (see `synod-phase1-5-debate-gate.md`); it routes to Phase 2 or straight to lightweight Phase 4.

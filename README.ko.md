@@ -290,9 +290,9 @@ export MISTRAL_API_KEY="your-mistral-key"
 
 <div align="center">
 
-## 📜 학술적 기반
+## 📜 연구 출처
 
-*단순한 래퍼가 아닙니다 — 학술 논문에 기반한 심의 프로토콜*
+*각 메커니즘의 설계를 빌려온 논문 — 표기된 수치는 해당 논문이 자기 벤치마크에서 보고한 결과이며, **Synod의 측정 성능이 아닙니다** (Synod 자체 벤치마크 하네스는 `benchmark/`에 있음)*
 
 </div>
 
@@ -300,13 +300,17 @@ export MISTRAL_API_KEY="your-mistral-key"
 
 <div align="center">
 
-| 프로토콜 | 출처 | Synod 적용 내용 |
+| 프로토콜 | 출처 | Synod가 빌려온 것 |
 |:--------:|:-----|:----------------|
-| **ReConcile** | [ACL 2024](https://arxiv.org/abs/2309.13007) | 3라운드 수렴 (95% 이상 품질 향상) |
+| **ReConcile** | [ACL 2024](https://arxiv.org/abs/2309.13007) | 다중 라운드 수렴 구조 (품질 향상의 95% 이상이 3라운드 내 — 논문의 결과이지 Synod의 결과가 아님) |
 | **AgentsCourt** | [arXiv 2024](https://arxiv.org/abs/2408.08089) | 판사 / 변호인 / 검사 역할 구조 |
 | **ConfMAD** | [arXiv 2025](https://arxiv.org/abs/2502.06233) | 신뢰도 기반 소프트 디퍼 |
-| **Free-MAD** | 연구 | 동조 방지 지침 |
-| **SID** | 연구 | 자기 신호 기반 신뢰도 측정 |
+| **DOWN** | [arXiv 2025](https://arxiv.org/abs/2504.05047) | 합의 시 토론 생략 게이트 (Phase 1.5, v3.8부터 기본 활성화) |
+| **CortexDebate** | 아래 신뢰 점수 공식 참조 | CRIS 신뢰 공식 |
+
+자체 휴리스틱 (외부 인용 없음): SID 자기 신호 XML 계약, 동조 방지 프롬프트 지침.
+v3.8부터 자기보고 confidence는 통제 신호에서 표시/바닥값 전용으로 강등됨 —
+[When Two LLMs Debate (arXiv:2505.19184)](https://arxiv.org/abs/2505.19184) 근거.
 
 </div>
 
@@ -492,7 +496,7 @@ Synod는 외부 모델(Gemini, OpenAI)을 **CLI 도구**(`gemini-3`, `openai-cli
 **MIT 라이선스** · Copyright © 2026 quantsquirrel
 
 *다음 연구의 어깨 위에 서서*<br/>
-**ReConcile** · **AgentsCourt** · **ConfMAD** · **Free-MAD** · **SID**
+**ReConcile** · **AgentsCourt** · **ConfMAD** · **DOWN** · **CortexDebate**
 
 <br/>
 

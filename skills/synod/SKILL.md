@@ -32,10 +32,16 @@ You are the **Synod Orchestrator** - a judicial coordinator managing a multi-mod
 | 환경변수 | 기본값 | 설명 |
 |----------|--------|------|
 | `SYNOD_V2_AUTO_CLASSIFY` | `1` | 자동 분류 활성화 (`0`=disabled, legacy mode) |
-| `SYNOD_V2_DYNAMIC_ROUNDS` | `1` | 동적 라운드 수 결정 활성화 (`0`=disabled) |
 | `SYNOD_V2_ADAPTIVE_TIMEOUT` | `0` | 적응형 타임아웃 활성화 - cold-start defaults 사용 (`1`=enabled) |
 | `SYNOD_EVIDENCE_FIRST` | `0` | 증거 우선 Phase 0.5/4.5 활성화 (`1`=enabled, 또는 `--evidence-first`) |
-| `SYNOD_DEBATE_GATE` | `0` | 토론 전 합의 사전 게이트 Phase 1.5 활성화 (`1`=enabled); 솔버 합의 시 Phase 2-3 우회 |
+| `SYNOD_DEBATE_GATE` | `1` | Phase 1.5 합의 게이트 (v3.8부터 기본 활성화); 솔버 합의 시 Phase 2-3 우회, deep/ultra 티어는 항상 전체 토론. `0`=항상 전체 토론 |
+| `SYNOD_ANONYMIZE` | `1` | 숙의 익명화 (v3.8부터 기본 활성화) — 외부 CLI의 브랜드 아첨 방지. `0`=비활성화 |
+
+> **v3.8에서 제거됨:** `SYNOD_V2_DYNAMIC_ROUNDS` (동적 라운드 수) — 라운드 수는 세션
+> 라벨일 뿐 실행을 바꾸지 않는 플라시보였음. 복잡도는 티어 선택에만 사용되며, 적응형
+> 깊이 제어는 Phase 1.5 debate gate가 담당. Phase 1의 confidence 기반 조기 종료
+> (전원 can_exit + ≥90)도 제거됨 — 자기보고 confidence는 통제 신호로 부적합
+> (arXiv:2505.19184).
 
 ---
 
@@ -196,12 +202,12 @@ IF PROBLEM is empty OR PROBLEM is whitespace-only:
    - OpenAI: $OPENAI_CLI --model ... < prompt.txt > response.txt
    - Validate responses, enforce format if needed
    - VERIFY response files exist (Step 1.7) — HALT if missing
-   - Check early exit condition
 9. ↓
-10. PHASE 1.5: Debate Gate (modules/synod-phase1-5-debate-gate.md) — optional (SYNOD_DEBATE_GATE=1)
-    - Runs only when `SYNOD_DEBATE_GATE=1`; no-op otherwise (flag unset = legacy path unchanged)
-    - Calls debate_gate.py --signals-dir on round-1-solver parsed JSON (zero external model calls)
-    - decision=skip_debate → lightweight Phase 4 synthesis from weighted vote; Phases 2–3 bypassed
+10. PHASE 1.5: Debate Gate (modules/synod-phase1-5-debate-gate.md) — DEFAULT-ON (v3.8)
+    - Opt out with `SYNOD_DEBATE_GATE=0` (legacy full-debate path)
+    - Calls debate_gate.py --signals-dir ... --tier on round-1-solver parsed JSON (zero external model calls)
+    - Skip is keyed on CLAIM AGREEMENT (not self-reported confidence); deep/ultra tier always runs full debate
+    - decision=skip_debate → lightweight Phase 4 synthesis; Phases 2–3 bypassed
     - decision=run_debate → fall through to Phase 2 unchanged
 11. ↓
 12. PHASE 2: Critic Round (modules/synod-phase2-critic.md)
@@ -343,6 +349,6 @@ mistral-cli --model codestral < prompt.txt  # 코드 특화
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
 | `SYNOD_V2_AUTO_CLASSIFY` | `1` | `0`으로 설정하면 v1.0 모드 동작 |
-| `SYNOD_V2_DYNAMIC_ROUNDS` | `1` | `0`으로 설정하면 고정 라운드 수 사용 |
 | `SYNOD_V2_ADAPTIVE_TIMEOUT` | `0` | `1`로 설정하면 cold-start defaults 기반 적응형 타임아웃 활성화 |
-| `SYNOD_DEBATE_GATE` | `0` | `1`로 설정하면 Phase 1.5 토론 사전 게이트 활성화; 솔버 합의 시 Phase 2-3 우회 |
+| `SYNOD_DEBATE_GATE` | `1` | Phase 1.5 합의 게이트 (v3.8부터 기본 활성화). `0`=항상 전체 토론 |
+| `SYNOD_ANONYMIZE` | `1` | 숙의 익명화 (v3.8부터 기본 활성화). `0`=비활성화 |

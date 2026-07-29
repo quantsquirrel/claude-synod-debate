@@ -69,23 +69,21 @@ class TestPhaseOrchestration:
         for _mode_name, mode_config in modes.items():
             assert "description" in mode_config
             assert "models" in mode_config
-            assert "rounds" in mode_config
             assert "focus" in mode_config
 
     def test_phase1_classifier_output_feeds_solver_config(self):
-        """Phase 1: Classifier output (mode/complexity/rounds) feeds into solver."""
+        """Phase 1: Classifier output (mode/complexity) feeds into solver."""
         # Simulate user prompt
         prompt = "이 코드 리뷰해줘: def foo(): pass"
 
-        # Phase 1a: Classifier determines mode and rounds
+        # Phase 1a: Classifier determines mode and complexity (complexity feeds tier)
         mode, confidence = classifier.classify_prompt(prompt)
-        complexity_level, rounds = classifier.determine_complexity(prompt)
+        complexity_level = classifier.determine_complexity(prompt)
 
         assert mode in ["review", "design", "debug", "idea", "general"]
         assert isinstance(confidence, float)
         assert 0 <= confidence <= 1
         assert complexity_level in ["simple", "medium", "complex"]
-        assert rounds in [2, 3, 4]
 
         # Phase 1b: Config provides model settings for detected mode
         mode_config = get_mode_config(mode)
@@ -430,7 +428,6 @@ class TestConfigProgressIntegration:
             "trust_good": get_threshold("trust_good"),
             "trust_high": get_threshold("trust_high"),
             "trust_cap": get_threshold("trust_cap"),
-            "early_exit_confidence": get_threshold("early_exit_confidence"),
         }
 
         assert thresholds["low_confidence"] == 50
@@ -438,19 +435,15 @@ class TestConfigProgressIntegration:
         assert thresholds["trust_good"] == 1.0
         assert thresholds["trust_high"] == 1.5
         assert thresholds["trust_cap"] == 2.0
-        assert thresholds["early_exit_confidence"] == 90
 
     def test_progress_tracks_phase_with_config_mode(self):
-        """Test progress can track phases corresponding to config modes."""
+        """Test progress can track the fixed 4-phase structure for all modes."""
         modes = ["review", "design", "debug", "idea", "general"]
 
         for mode in modes:
-            mode_config = get_mode_config(mode)
-            rounds = mode_config["rounds"]["base"]
-
-            # Progress can track this mode's rounds
+            # Fixed phase structure since v3.8 (solver/critic/defense/synthesis)
             progress = SynodProgress()
-            for phase in range(rounds):
+            for phase in range(4):
                 progress.phase_start(phase, f"{mode.capitalize()} Phase {phase}")
                 assert progress.current_phase == phase
 
@@ -458,16 +451,15 @@ class TestConfigProgressIntegration:
         """Test classifier uses config complexity thresholds."""
         # Simple prompt
         simple_prompt = "Fix this bug"
-        complexity, rounds = classifier.determine_complexity(simple_prompt)
+        complexity = classifier.determine_complexity(simple_prompt)
         assert complexity == "simple"
-        assert rounds == 2
 
         # Complex prompt (long with code blocks)
         complex_prompt = (
             "Review this code:\n" + "```python\n" + "def foo():\n    pass\n" * 50 + "```\n"
         )
-        complexity, rounds = classifier.determine_complexity(complex_prompt)
-        assert rounds >= 2
+        complexity = classifier.determine_complexity(complex_prompt)
+        assert complexity in ["simple", "medium", "complex"]
 
     def test_end_to_end_flow_review_mode(self):
         """Test end-to-end flow for review mode."""

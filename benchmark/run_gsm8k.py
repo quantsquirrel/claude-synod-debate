@@ -115,8 +115,8 @@ def call_synod_solver(
     start = time.time()
 
     # Get model configurations from config
-    gemini_model = config["models"]["gemini"]  # e.g., "gemini-2.0-flash"
-    openai_model = config["models"]["openai"]["primary"]  # e.g., "gpt-4o"
+    gemini_model = config["models"]["gemini"]  # e.g., "gemini-3.1-pro-preview"
+    openai_model = config["models"]["openai"]["primary"]  # e.g., "gpt-5.6-sol"
 
     # Map to CLI model names
     gemini_cli_model = "flash" if "flash" in gemini_model else "pro"

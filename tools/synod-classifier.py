@@ -145,13 +145,16 @@ def classify_problem_type(prompt):
 
 def determine_complexity(prompt):
     """
-    Determine complexity level and recommended rounds.
+    Determine complexity level. Complexity feeds TIER selection (models,
+    reasoning depth, timeouts) — the phase structure itself is fixed; the
+    v2.0 complexity→rounds mapping was removed in v3.8 as a placebo (round
+    count only ever labeled the session, it never changed execution).
 
     Args:
         prompt: User's prompt text
 
     Returns:
-        tuple: (complexity_level, rounds)
+        str: complexity_level (simple|medium|complex)
     """
     # Count words
     word_count = len(prompt.split())
@@ -176,19 +179,15 @@ def determine_complexity(prompt):
         complexity_cfg = cfg.get("complexity", {})
         simple_max = complexity_cfg.get("simple", {}).get("max_score", 0.5)
         medium_max = complexity_cfg.get("medium", {}).get("max_score", 2.0)
-        simple_rounds = complexity_cfg.get("simple", {}).get("rounds", 2)
-        medium_rounds = complexity_cfg.get("medium", {}).get("rounds", 3)
-        complex_rounds = complexity_cfg.get("complex", {}).get("rounds", 4)
     except (ImportError, FileNotFoundError, Exception):
         simple_max, medium_max = 0.5, 2.0
-        simple_rounds, medium_rounds, complex_rounds = 2, 3, 4
 
     if score < simple_max:
-        return "simple", simple_rounds
+        return "simple"
     elif score < medium_max:
-        return "medium", medium_rounds
+        return "medium"
     else:
-        return "complex", complex_rounds
+        return "complex"
 
 
 def main():
@@ -221,7 +220,7 @@ def main():
 
     # Always include all fields (synod.md references them)
     problem_type = classify_problem_type(prompt)
-    complexity_level, rounds = determine_complexity(prompt)
+    complexity_level = determine_complexity(prompt)
 
     # Determine tier from complexity (v3.1)
     try:
@@ -236,7 +235,6 @@ def main():
         "confidence": round(confidence, 2),
         "problem_type": problem_type,
         "complexity": complexity_level,
-        "rounds": rounds,
         "tier": tier,
     }
 
