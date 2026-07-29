@@ -86,6 +86,10 @@ def _resolve(cited: str, target: str) -> tuple[str, str | None]:
         return ("exact", cited_abs) if os.path.isfile(cited_abs) else ("missing", None)
 
     joined = os.path.abspath(os.path.join(target_abs, cited))
+    # Containment check: a relative citation with ../ segments must not escape
+    # TARGET_PATH — "verified" is a promise the file lives UNDER the target.
+    if not (joined + os.sep).startswith(target_abs + os.sep) and joined != target_abs:
+        return ("outside", None)
     if os.path.isfile(joined):
         return ("exact", joined)
 

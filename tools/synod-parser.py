@@ -561,7 +561,7 @@ def format_claim_list(signals_dir: str) -> str:
     import os as _os
 
     rows = []
-    used_prefixes: dict[str, int] = {}
+    used_prefixes: set[str] = set()
     for path in sorted(_glob.glob(_os.path.join(signals_dir, "*-parsed.json"))):
         model = _os.path.basename(path).replace("-parsed.json", "")
         try:
@@ -569,11 +569,17 @@ def format_claim_list(signals_dir: str) -> str:
                 data = json.load(f)
         except (OSError, json.JSONDecodeError):
             continue
+        # Prefix: first letter; on collision widen to two letters (gemini→G,
+        # grok→GR) so ids stay unambiguous ("G2" claim 1 would read as "G21").
+        # Letter-suffix fallback guarantees termination for pathological names.
         prefix = model[:1].upper() or "M"
-        # Disambiguate colliding first letters (e.g. two g* providers): G, G2...
-        used_prefixes[prefix] = used_prefixes.get(prefix, 0) + 1
-        if used_prefixes[prefix] > 1:
-            prefix = f"{prefix}{used_prefixes[prefix]}"
+        if prefix in used_prefixes:
+            prefix = (model[:2].upper() or "M").ljust(2, "X")
+        base, salt = prefix, 0
+        while prefix in used_prefixes:
+            prefix = base + (chr(ord("B") + salt) if salt < 24 else str(salt))
+            salt += 1
+        used_prefixes.add(prefix)
         conf = (data.get("confidence") or {}).get("score", "?")
         focus = data.get("semantic_focus") or []
         if not focus:
@@ -584,9 +590,10 @@ def format_claim_list(signals_dir: str) -> str:
     if not rows:
         return ""
 
+    esc = lambda s: str(s).replace("|", "\\|")
     lines = ["| ID | Agent | Conf | Claim |", "|----|-------|------|-------|"]
     for cid, model, conf, claim in rows:
-        lines.append(f"| {cid} | {model} | {conf} | {claim} |")
+        lines.append(f"| {cid} | {esc(model)} | {conf} | {esc(claim)} |")
     return "\n".join(lines)
 
 

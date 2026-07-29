@@ -598,12 +598,21 @@ class TestFormatClaimList:
         table = synod_parser.format_claim_list(str(tmp_path))
         assert "*(no claims extracted)*" in table
 
-    def test_colliding_prefixes_disambiguated(self, tmp_path):
+    def test_colliding_prefixes_widen_to_letters(self, tmp_path):
         self._write_parsed(tmp_path, "gemini", 80, ["a"])
         self._write_parsed(tmp_path, "grok", 70, ["b"])
         table = synod_parser.format_claim_list(str(tmp_path))
         assert "| G1 |" in table
-        assert "| G21 |" in table  # second g-provider gets G2 prefix
+        assert "| GR1 |" in table  # second g-provider widens to two letters
+        assert "| G21 |" not in table  # digit prefixes would make G2+claim1 read as G21
+
+    def test_pipe_in_claim_escaped(self, tmp_path):
+        self._write_parsed(tmp_path, "claude", 90, ["use a | b pattern"])
+        table = synod_parser.format_claim_list(str(tmp_path))
+        assert "use a \\| b pattern" in table
+        # Row must still have exactly 4 columns (5 pipe delimiters + borders)
+        row = [ln for ln in table.splitlines() if "use a" in ln][0]
+        assert row.count("|") - row.count("\\|") == 5
 
     def test_empty_dir_returns_empty_string(self, tmp_path):
         assert synod_parser.format_claim_list(str(tmp_path)) == ""

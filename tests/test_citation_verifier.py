@@ -77,6 +77,15 @@ class TestVerdicts:
         assert r["fabricated"] == 0
         assert r["undecidable"] == 1
 
+    def test_relative_traversal_outside_target(self, repo, tmp_path_factory):
+        """A ../ citation must not escape TARGET_PATH and earn 'verified'."""
+        parent_file = repo.parent / "escape.py"
+        parent_file.write_text("secret\n")
+        r = _cv.verify_text("- see ../escape.py:1", str(repo))
+        assert r["citations"][0]["verdict"] == "outside"
+        assert r["fabricated"] == 0
+        assert r["verified"] == 0
+
     def test_absolute_outside_target(self, repo, tmp_path_factory):
         other = tmp_path_factory.mktemp("elsewhere")
         (other / "x.py").write_text("z\n")
