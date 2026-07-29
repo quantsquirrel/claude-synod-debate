@@ -277,6 +277,19 @@ color identity via Rich.
 | Gemini | `✦` (U+2726) | Gemini sparkle | `blue` | `#4285F4` |
 | OpenAI | `❀` (U+2740) | OpenAI knot/floret | `green` | `#10A37F` |
 
+**Mandatory Dissent subsection (v3.9).** Evidenced minority positions must
+never be silently dropped by consensus — in ~25% of divergent cases the
+minority is right ("Minority Sentinel" arXiv:2606.29270), and LLM-judge
+majority overrides tested net-negative. Populate from `contentions.json` +
+`trust-scores.json`:
+
+- Include every claim held by a SINGLE solver (trust ≥ 0.5) that was disputed
+  but NOT refuted with cited evidence during Phases 2–3.
+- Render each as: claim (with its ledger id if available), holder, and why it
+  was not adopted.
+- If no such claim exists, render `- (기각되지 않은 소수 의견 없음)` — the
+  section itself is never omitted, so its absence is auditable.
+
 **Render exactly:**
 
 ```markdown
@@ -291,6 +304,10 @@ color identity via Rich.
 ### 해결된 주요 쟁점
 1. {contention} -> {resolution}
 2. {contention} -> {resolution}
+
+### 소수 의견 (Dissent)
+- {claim_id}: {minority_claim} — {holder}, 채택되지 않은 이유: {reason}
+- (기각되지 않은 소수 의견 없음)   ← 해당 없을 때만
 
 ### 신뢰 점수
 - ✻ Claude: {score} ({rating})

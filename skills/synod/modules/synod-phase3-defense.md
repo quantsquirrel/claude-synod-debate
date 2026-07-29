@@ -153,6 +153,9 @@ Only concede points that are GENUINELY indefensible.
 ## Original Problem
 {PROBLEM}
 
+Before arguing, confirm the debate still answers this original question;
+if it has drifted, flag the drift explicitly before your defense.
+
 ## REQUIRED Output Format
 
 <defense>
@@ -212,6 +215,9 @@ Only concede if the defense is GENUINELY bulletproof.
 
 ## Original Problem
 {PROBLEM}
+
+Before arguing, confirm the debate still answers this original question;
+if it has drifted, flag the drift explicitly before your prosecution.
 
 ## REQUIRED Output Format
 

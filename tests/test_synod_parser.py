@@ -569,3 +569,62 @@ class TestFormatMetricsSummary:
         assert isinstance(result, str)
         assert "45%" in result
         assert "1/3" in result
+
+
+class TestFormatClaimList:
+    """Tests for format_claim_list() — v3.9 id-tagged claim ledger."""
+
+    def _write_parsed(self, d, model, score, focus):
+        payload = {"confidence": {"score": score, "can_exit": False}, "semantic_focus": focus}
+        (d / f"{model}-parsed.json").write_text(json.dumps(payload))
+
+    def test_all_claims_survive_with_stable_ids(self, tmp_path):
+        self._write_parsed(tmp_path, "claude", 88, ["c one", "c two", "c three"])
+        self._write_parsed(tmp_path, "gemini", 75, ["g one", "g two"])
+        self._write_parsed(tmp_path, "openai", 91, ["o one"])
+        table = synod_parser.format_claim_list(str(tmp_path))
+        # Lossless: every claim appears verbatim
+        for claim in ["c one", "c three", "g two", "o one"]:
+            assert claim in table
+        # Stable ids: first letter + index
+        assert "| C1 |" in table and "| C3 |" in table
+        assert "| G1 |" in table and "| G2 |" in table
+        assert "| O1 |" in table
+        # Confidence column carried through
+        assert "| 88 |" in table
+
+    def test_empty_focus_renders_placeholder(self, tmp_path):
+        self._write_parsed(tmp_path, "gemini", 50, [])
+        table = synod_parser.format_claim_list(str(tmp_path))
+        assert "*(no claims extracted)*" in table
+
+    def test_colliding_prefixes_disambiguated(self, tmp_path):
+        self._write_parsed(tmp_path, "gemini", 80, ["a"])
+        self._write_parsed(tmp_path, "grok", 70, ["b"])
+        table = synod_parser.format_claim_list(str(tmp_path))
+        assert "| G1 |" in table
+        assert "| G21 |" in table  # second g-provider gets G2 prefix
+
+    def test_empty_dir_returns_empty_string(self, tmp_path):
+        assert synod_parser.format_claim_list(str(tmp_path)) == ""
+
+    def test_corrupt_json_skipped(self, tmp_path):
+        (tmp_path / "bad-parsed.json").write_text("NOT JSON {{{")
+        self._write_parsed(tmp_path, "claude", 90, ["still here"])
+        table = synod_parser.format_claim_list(str(tmp_path))
+        assert "still here" in table
+        assert "bad" not in table.split("\n")[0]
+
+    def test_cli_claim_list_mode(self, tmp_path):
+        import subprocess
+
+        self._write_parsed(tmp_path, "claude", 88, ["cli claim"])
+        parser_path = os.path.join(os.path.dirname(__file__), "..", "tools", "synod-parser.py")
+        out = subprocess.run(
+            [sys.executable, parser_path, "--claim-list", str(tmp_path)],
+            capture_output=True,
+            text=True,
+        )
+        assert out.returncode == 0
+        assert "cli claim" in out.stdout
+        assert "| C1 |" in out.stdout

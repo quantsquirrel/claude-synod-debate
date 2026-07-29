@@ -13,9 +13,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration with Claude Code's native analysis capabilities
 - Batch processing for multiple problems in sequence
 - Export debates to markdown reports with embedded confidence metrics
-- Phase 4.5 citation VERIFIER (file-exists + line-in-range per model, fabricated-citation findings) and flag-gated execution arbiter for debug/review modes
-- Claim-list HISTORY_CONTEXT (id-tagged semantic_focus items instead of ≤30-word compression) + mandatory Dissent section in Phase 4
+- Demote CRIS: when TARGET_PATH is set, weight models by verified-citation rate (citation_verifier per-model reports) instead of the self-graded rubric; uniform/confidence fallback for design/general modes
 - LiveRunner against the direct-API backends + S0 arm (independent answers + Claude synthesis) — the killer-baseline ablation
+
+---
+
+## [3.9.0] - 2026-07-30
+
+Verification-first release — the second tranche of the 2026-07 research audit.
+v3.8 fixed the signal plumbing; v3.9 adds the machinery the grounded-debate
+literature says reliability actually comes from: verify evidence mechanically,
+preserve claims losslessly, let execution settle what it can. The full
+research basis (citations + evidence-strength labels + honest limitations) is
+now documented in README.md "Research-Driven Changes (v3.8–v3.9)".
+
+### Added
+
+- **`tools/citation_verifier.py` + Phase 4.5 upgrade (counter → verifier).**
+  Strictly mechanical checks per citation: file exists under TARGET_PATH,
+  line within file length. Verdicts: verified / bad_line / not_found
+  (fabrication signals, surfaced as first-class findings) / ambiguous /
+  outside. Runs per-model over `round-1-solver/*.md` (fabrication attributed
+  to the model that fabricated) plus the synthesis. The `evidence-based`
+  label now additionally requires zero fabricated citations. Semantic
+  relatedness is deliberately NOT judged — that would need an LLM again;
+  keyword overlap is reported as observability only. (Tool-MAD
+  arXiv:2601.04742; MAST arXiv:2503.13657 — pre-v3.9, a fabricated
+  `utils.py:9999` scored the same as a real citation.)
+- **Lossless claim ledger (`synod-parser.py --claim-list`).** Phase 2
+  HISTORY_CONTEXT no longer compresses each solver to a ≤30-word sentence —
+  the exact factual-attrition mechanism the literature measures (up to 72% of
+  issue-critical facts erased across rounds, arXiv:2606.03032). All
+  semantic_focus claims survive verbatim with stable ids (C1../G1../O1..);
+  critics are asked to reference claim ids (free-text still accepted —
+  no new format-failure mode). Fail-safe falls back to the legacy table.
+- **Mandatory Dissent section in Phase 4.** Any claim held by a single solver
+  (trust ≥ 0.5) that was disputed but not refuted with cited evidence is
+  listed — never silently dropped ("~25% of divergent cases the minority is
+  right", arXiv:2606.29270). The section renders explicitly even when empty,
+  so its absence is auditable.
+- **Execution arbiter (`tools/exec_arbiter.py`, `SYNOD_EXEC_ARBITER=1`).**
+  Debug/review modes with a TARGET_PATH: runs the target's own suite
+  (`pytest -x -q`, hard timeout, tail-bounded output) using
+  ground_truth_probe's existing test_collect.json for discovery, and injects
+  pass/fail into the critic context under the machine-verified Primary
+  Evidence convention. Timeout is reported as UNSETTLED, never as failing.
+  Models debate only what execution cannot settle (CWM arXiv:2510.02387).
+- **Question re-anchoring drift check.** One-line addition to every Phase 2/3
+  external prompt: confirm the discussion still answers the original
+  question, flag drift first (76–89% drift on subjective tasks,
+  arXiv:2502.19559).
+- **README (en/ko): "Research-Driven Changes (v3.8–v3.9)"** — full mapping of
+  every mechanism change to its citations, with evidence-strength labels
+  (multi-source / replicated / single-paper preprint), what was deliberately
+  NOT changed and why, and honest limitations (no local benchmark yet; the
+  heterogeneous-panel-vs-single-frontier question remains empirically open).
 
 ---
 

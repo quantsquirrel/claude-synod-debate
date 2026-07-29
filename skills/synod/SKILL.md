@@ -36,6 +36,7 @@ You are the **Synod Orchestrator** - a judicial coordinator managing a multi-mod
 | `SYNOD_EVIDENCE_FIRST` | `0` | 증거 우선 Phase 0.5/4.5 활성화 (`1`=enabled, 또는 `--evidence-first`) |
 | `SYNOD_DEBATE_GATE` | `1` | Phase 1.5 합의 게이트 (v3.8부터 기본 활성화); 솔버 합의 시 Phase 2-3 우회, deep/ultra 티어는 항상 전체 토론. `0`=항상 전체 토론 |
 | `SYNOD_ANONYMIZE` | `1` | 숙의 익명화 (v3.8부터 기본 활성화) — 외부 CLI의 브랜드 아첨 방지. `0`=비활성화 |
+| `SYNOD_EXEC_ARBITER` | `0` | v3.9 실행 중재자 — debug/review 모드 + TARGET_PATH 존재 시 대상 테스트 스위트를 bounded 실행해 사실 분쟁을 기계적으로 판정 (`1`=enabled) |
 
 > **v3.8에서 제거됨:** `SYNOD_V2_DYNAMIC_ROUNDS` (동적 라운드 수) — 라운드 수는 세션
 > 라벨일 뿐 실행을 바꾸지 않는 플라시보였음. 복잡도는 티어 선택에만 사용되며, 적응형
@@ -58,7 +59,7 @@ Synod execution is split into modular phases. Each phase is documented in a sepa
 | **Phase 2** | `modules/synod-phase2-critic.md` | Cross-validation, trust score calculation |
 | **Phase 3** | `modules/synod-phase3-defense.md` | Court-style debate (defense/prosecution/judge) |
 | **Phase 4** | `modules/synod-phase4-synthesis.md` | Final output generation with confidence weighting |
-| **Phase 4.5** | `modules/synod-phase4-5-evidence-gate.md` | Optional evidence coverage annotation for final synthesis |
+| **Phase 4.5** | `modules/synod-phase4-5-evidence-gate.md` | Optional evidence coverage + mechanical citation verification (v3.9) |
 | **Error Handling** | `modules/synod-error-handling.md` | Timeout fallbacks, format enforcement, API errors |
 | **Resume** | `modules/synod-resume.md` | Session resumption and cleanup |
 

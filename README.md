@@ -318,6 +318,77 @@ from control signal to display/floor-only, following
 
 <br/>
 
+### 🔬 Research-Driven Changes (v3.8–v3.9)
+
+In 2026-07 we audited Synod against the 2024–2026 multi-agent deliberation
+literature (~60 sources across four sweeps: does debate work, protocol design,
+failure modes, industry practice). Every proposed change was adversarially
+verified against the actual codebase before implementation. This section
+records **what changed, on what evidence, and how strong that evidence is** —
+so future tuning argues with the citations, not with vibes.
+
+#### What the literature supports — and Synod keeps
+
+| Design choice | Supporting evidence |
+|:--|:--|
+| **Heterogeneous cross-provider panel** | The single best-supported choice. The ICLR 2025 systematic MAD evaluation found heterogeneous panels the *only* consistently positive configuration (88.2% vs 84.2% single-model); [Stop Overvaluing MAD (arXiv:2502.08788)](https://arxiv.org/abs/2502.08788) calls heterogeneity the "universal antidote"; one different-family peer cuts harmful answer revisions from 89% to 35% (2026). Same-family models share correlated errors — cross-provider panels decorrelate them. |
+| **Orchestrator mines the transcript; no majority voting** | Voting discards correct answers that are present in the transcript — a 32.3pp "oracle gap" (Cost of Consensus, 2025). Claude-as-synthesizer reads everything instead of counting votes. |
+| **Independent Phase 1, no cross-contamination** | Answer diversity must be seeded before any exposure ([Voting or Consensus? arXiv:2502.19130](https://arxiv.org/abs/2502.19130): independent-first + few rounds). |
+| **Few rounds, adaptive skip** | The literature plateau is 2–4 agents and ~2 rounds; extra rounds measurably *hurt* via sycophantic flips ([Talk Isn't Always Cheap, arXiv:2509.05396](https://arxiv.org/abs/2509.05396)). Synod's fixed 2-cross-exposure-round structure sits at the plateau; the debate gate skips even those when solvers already agree ([DOWN, arXiv:2504.05047](https://arxiv.org/abs/2504.05047): ~60% of queries skippable at equal-or-better accuracy). |
+
+#### What the literature contradicted — and Synod changed
+
+| Change (version) | What was wrong | Evidence | Strength |
+|:--|:--|:--|:--|
+| **Debate gate default-on, keyed on claim agreement; deep/ultra always debates** (v3.8) | Skipping was opt-in, and 50% of the old composite score was self-reported signals | Debate adds no expected correctness over independent answers + aggregation on easy consensus cases (martingale result, [Debate or Vote, arXiv:2508.17536](https://arxiv.org/abs/2508.17536)); debate pays only on hard contested problems ([Revisiting MAD as Test-Time Scaling, arXiv:2505.22960](https://arxiv.org/abs/2505.22960)) | multi-source |
+| **Self-reported confidence demoted to display + fail-closed floor** (v3.8) | Four decisions (early exit, gate, weighting, defer) keyed on verbal self-confidence | In 61.7% of debates *both* sides claim ≥75% win probability, and confidence rises with rounds regardless of merit ([When Two LLMs Debate, arXiv:2505.19184](https://arxiv.org/abs/2505.19184)) | replicated |
+| **`FINAL_CONFIDENCE = Σ(T·C)/Σ(T)` deleted → mechanical 합의 지표** (v3.8) | The formula laundered uncalibrated self-reports through unvalidated CRIS weights into one authoritative-looking % | Same confidence literature + the oracle-gap result favoring transcript evidence over scalar aggregates | multi-source |
+| **Anonymization default-on** (v3.8) | Provider identities were visible to external models by default | Identity cues drive sycophantic premature consensus ([arXiv:2510.07517](https://arxiv.org/abs/2510.07517)); self-preference is driven by self-recognition ([Panickssery et al., arXiv:2404.13076](https://arxiv.org/abs/2404.13076)). Honest caveat: the in-session Claude judge builds the alias map itself and **cannot be blinded** — the benefit is for the stateless external CLIs | multi-source |
+| **Authorship-aware court roles; rubric-decomposed judge with anti-style instruction** (v3.8) | Hardcoded Gemini=Defense/OpenAI=Prosecutor could make a provider prosecute its own winning solution; single holistic rulings reward rhetoric | Judge order/style biases flip rankings ([LLMs are not Fair Evaluators, arXiv:2305.17926](https://arxiv.org/abs/2305.17926)); style bias now exceeds position bias, and rubric decomposition cuts self-preference ~31.5% ([Judging the Judges, arXiv:2604.23178](https://arxiv.org/abs/2604.23178)) | mixed: biases replicated; the 31.5% figure is a single 2026 preprint |
+| **Dynamic rounds machinery deleted** (v3.8) | `TOTAL_ROUNDS` was a session label that never changed execution — a placebo knob | Protocol knobs are second-order versus participant strength/diversity ([arXiv:2511.07784](https://arxiv.org/abs/2511.07784)); width beats depth on the compute Pareto frontier ([arXiv:2605.01566](https://arxiv.org/abs/2605.01566)) | multi-source for the plateau; the deletion itself is a repo fact |
+| **Citation verifier: file-exists + line-in-range, per model** (v3.9) | The evidence gate *counted* citation-shaped strings — fabricated `utils.py:9999` scored as evidence | Grounded debate beats ungrounded (+5.5%, [Tool-MAD, arXiv:2601.04742](https://arxiv.org/abs/2601.04742)); 21% of multi-agent failures trace to weak verification ([MAST, arXiv:2503.13657](https://arxiv.org/abs/2503.13657)) | single-paper 2026 preprints, but convergent direction; the counting flaw was locally verified |
+| **Lossless claim ledger replaces ≤30-word summaries; mandatory Dissent section** (v3.9) | Phase 2 compressed each solver to one sentence — the exact factual-attrition mechanism the literature measures; evidenced minority views could vanish silently | Up to 72% of issue-critical facts erased across rounds while stances homogenize ([The Deliberative Illusion, arXiv:2606.03032](https://arxiv.org/abs/2606.03032)); 76–89% problem drift on subjective/design tasks ([Stay Focused, arXiv:2502.19559](https://arxiv.org/abs/2502.19559)); in ~25% of divergent cases the minority is right and judge-driven majority overrides test net-negative ([Minority Sentinel, arXiv:2606.29270](https://arxiv.org/abs/2606.29270)) | single-paper 2026 preprints, mutually corroborating |
+| **Execution arbiter for debug/review** (v3.9, `SYNOD_EXEC_ARBITER=1`) | Code disputes were settled by rhetoric even when the target repo had a runnable test suite | Execution-grounded candidate selection is how SWE-bench SOTA picks answers ([CWM, arXiv:2510.02387](https://arxiv.org/abs/2510.02387)); models should debate only what execution cannot settle | product/benchmark-backed pattern; Synod's implementation is bounded (pytest `-x`, hard timeout, timeout = UNSETTLED) |
+
+#### What we deliberately did NOT change
+
+- **Step 2.1b soft defer** (low-confidence hint) — kept: it *protects* minority
+  perspectives against premature consensus, which is an anti-sycophancy use of
+  the confidence signal, not a decision gate.
+- **CRIS trust rubric** — retained for now (it is cited to CortexDebate), but
+  its known weakness is that it is Claude grading itself and rivals on
+  unmeasurable qualities. The plan of record is to *demote* it: when a
+  `TARGET_PATH` exists, weight models by verified-citation rate instead;
+  deleting it outright would break Phase 3/4 consumers.
+- **Anti-conformity prompt instructions in Phase 3** — retained but no longer
+  load-bearing: [Talk Isn't Always Cheap](https://arxiv.org/abs/2509.05396)
+  shows prompt-level anti-sycophancy fails to stop flips, which is exactly why
+  v3.8+ mitigations are *mechanical* (gate, ledger, verifier, arbiter) rather
+  than more prompt text.
+
+#### Honest limitations
+
+1. **No local benchmark evidence yet.** Every number above is from the papers'
+   benchmarks, not from Synod runs — `benchmark/results/` is empty and
+   MockRunner is a scripted harness check (S3 wins by construction). The
+   killer ablation — independent answers + Claude synthesis (S0) vs full
+   debate on Synod's real workload — is planned and tracked in the CHANGELOG.
+2. **2026 preprints are marked as such.** Tool-MAD, Deliberative Illusion,
+   Minority Sentinel, Judging the Judges, and the width-vs-depth Pareto result
+   are single-paper, often small-model validations. They all point the same
+   direction, which is why we acted on them — but they are directional, not
+   settled.
+3. **The top-end question is open.** No study yet cleanly pits a heterogeneous
+   frontier panel (GPT-5.x + Gemini 3.x + Claude 4/5-class at full reasoning
+   depth) against a single frontier model given the same total budget. The
+   matched-compute negatives all used 2025-era or distilled models. Synod's
+   existence bet lives in that gap; the S0 ablation is how we intend to
+   measure it for our own workload.
+
+<br/>
+
+<br/>
+
 <details>
 <summary><b>📊 The Trust Equation</b></summary>
 

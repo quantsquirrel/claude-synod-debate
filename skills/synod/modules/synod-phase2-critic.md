@@ -87,18 +87,29 @@ As the orchestrator, analyze all three Solver responses:
 2. **Identify Contentions** - Conflicting claims or approaches
 3. **Spot Weaknesses** - Unsupported claims, logical gaps, missing considerations
 
-Create a compressed summary (HISTORY_CONTEXT) for external models:
-```
-## Prior Round
+**v3.9 — lossless claim list.** The pre-v3.9 HISTORY_CONTEXT compressed each
+solver to one ≤30-word sentence — exactly the cross-round factual-attrition
+mechanism the literature documents (arXiv:2606.03032: up to 72% of
+issue-critical facts erased as rounds progress). HISTORY_CONTEXT is now built
+MECHANICALLY from the parsed signals, preserving all semantic_focus claims
+verbatim with stable ids:
 
-| Agent | Conf | Key Claim |
-|-------|------|-----------|
-| Claude | {X} | {핵심 주장 1문장, 30단어 이하} |
-| Gemini | {Y} | {핵심 주장 1문장, 30단어 이하} |
-| OpenAI | {Z} | {핵심 주장 1문장, 30단어 이하} |
+```bash
+CLAIM_LIST=$(run_cli "$SYNOD_PARSER_CLI" --claim-list "${SESSION_DIR}/round-1-solver")
+```
+
+```
+## Prior Round — Claim Ledger
+
+{CLAIM_LIST}
+# | ID | Agent | Conf | Claim |  ← C1..C3 Claude, G1..G3 Gemini, O1..O3 OpenAI
 
 **Contentions**: {1-2문장으로 핵심 쟁점만, 최대 2개}
 ```
+
+If the parser call fails or returns empty, fall back to the legacy hand-written
+table (fail-safe — never block Phase 2 on the formatter). When anonymization is
+active, alias the Agent column exactly as in the pre-v3.9 table.
 
 ## Step 2.1b: Low Confidence Soft Defer Check
 
@@ -146,11 +157,17 @@ Validate claims from the Solver round. Focus on:
 - Are there logical errors?
 - What's missing?
 
+Where possible, reference specific claim IDs from the ledger below (e.g.
+"G2 lacks evidence because…"). Free-text critique is also accepted.
+
 ## Prior Round Context
 {HISTORY_CONTEXT}
 
 ## Original Problem
 {PROBLEM}
+
+Before critiquing, confirm the discussion still answers this original
+question; if it has drifted, flag the drift explicitly as your first point.
 
 ## REQUIRED Output Format
 
@@ -201,11 +218,17 @@ Find counter-examples and logical flaws. Focus on:
 - Assumptions that might be wrong
 - Alternative interpretations
 
+Where possible, reference specific claim IDs from the ledger below (e.g.
+"O1 fails when…"). Free-text critique is also accepted.
+
 ## Prior Round Context
 {HISTORY_CONTEXT}
 
 ## Original Problem
 {PROBLEM}
+
+Before critiquing, confirm the discussion still answers this original
+question; if it has drifted, flag the drift explicitly as your first point.
 
 ## REQUIRED Output Format
 
@@ -233,6 +256,43 @@ Find counter-examples and logical flaws. Focus on:
 3. [Tertiary issue]
 </semantic_focus>
 ```
+
+## Step 2.3b: Execution Arbiter (SYNOD_EXEC_ARBITER=1, debug/review modes only)
+
+> **Flag-gated AND mode-gated — skip entirely unless `SYNOD_EXEC_ARBITER=1`
+> AND `MODE` is `debug` or `review` AND Phase 0.5 ran with a `TARGET_PATH`.**
+> Execution is the arbiter the literature trusts for code disputes
+> (SWE-bench execution-grounded selection, arXiv:2510.02387; Tool-MAD
+> arXiv:2601.04742): models debate only what execution cannot settle.
+
+```bash
+if [[ "${SYNOD_EXEC_ARBITER:-0}" == "1" && ( "$MODE" == "debug" || "$MODE" == "review" ) \
+      && -n "${TARGET_PATH:-}" && -d "${SESSION_DIR}/phase0.5/probe" ]]; then
+  python3 "${TOOLS_DIR}/exec_arbiter.py" \
+      --target "$TARGET_PATH" \
+      --probe-dir "${SESSION_DIR}/phase0.5/probe" \
+      --timeout 120 \
+      > "${SESSION_DIR}/round-2-critic/exec-arbiter.json"
+  ARBITER_STATUS=$(python3 -c \
+      "import json; print(json.load(open('${SESSION_DIR}/round-2-critic/exec-arbiter.json'))['status'])" \
+      2>/dev/null || echo "error")
+  echo "[Phase 2] Execution arbiter: ${ARBITER_STATUS}" >&2
+fi
+```
+
+When `status` is `passed` or `failed`, append to HISTORY_CONTEXT (and to the
+Phase 3 court context) under the Phase 0.5 machine-verified convention:
+
+```
+## Primary Evidence (machine-verified — authoritative)
+Test suite execution: {status} (exit={exit_code}, {collected} tests collected)
+{report_tail, indented}
+Claims contradicted by this execution result are REFUTED — do not re-litigate
+them; debate only what execution cannot settle.
+```
+
+`skipped`/`timeout`/`error` statuses are logged but NOT injected — an absent or
+hung suite settles nothing (`timeout` explicitly means UNSETTLED, not failing).
 
 ## Step 2.4: Calculate Trust Scores
 
