@@ -547,6 +547,56 @@ def format_metrics_summary(metrics: dict) -> str:
     )
 
 
+def format_claim_list(signals_dir: str) -> str:
+    """Render a lossless, id-tagged claim table from round-1-solver parsed JSON.
+
+    v3.9: replaces the Phase 2 HISTORY_CONTEXT ≤30-word-per-solver compression —
+    the exact factual-attrition mechanism the deliberation literature documents
+    ("The Deliberative Illusion" arXiv:2606.03032: up to 72% of issue-critical
+    facts erased across rounds). Every semantic_focus item survives verbatim,
+    labeled with a stable id (C1..C3 / G1..G3 / O1..O3, first letter of the
+    model name) so critics can reference specific claims.
+    """
+    import glob as _glob
+    import os as _os
+
+    rows = []
+    used_prefixes: set[str] = set()
+    for path in sorted(_glob.glob(_os.path.join(signals_dir, "*-parsed.json"))):
+        model = _os.path.basename(path).replace("-parsed.json", "")
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        # Prefix: first letter; on collision widen to two letters (gemini→G,
+        # grok→GR) so ids stay unambiguous ("G2" claim 1 would read as "G21").
+        # Letter-suffix fallback guarantees termination for pathological names.
+        prefix = model[:1].upper() or "M"
+        if prefix in used_prefixes:
+            prefix = (model[:2].upper() or "M").ljust(2, "X")
+        base, salt = prefix, 0
+        while prefix in used_prefixes:
+            prefix = base + (chr(ord("B") + salt) if salt < 24 else str(salt))
+            salt += 1
+        used_prefixes.add(prefix)
+        conf = (data.get("confidence") or {}).get("score", "?")
+        focus = data.get("semantic_focus") or []
+        if not focus:
+            rows.append((f"{prefix}1", model, conf, "*(no claims extracted)*"))
+        for i, claim in enumerate(focus, 1):
+            rows.append((f"{prefix}{i}", model, conf, claim.strip()))
+
+    if not rows:
+        return ""
+
+    esc = lambda s: str(s).replace("|", "\\|")
+    lines = ["| ID | Agent | Conf | Claim |", "|----|-------|------|-------|"]
+    for cid, model, conf, claim in rows:
+        lines.append(f"| {cid} | {esc(model)} | {conf} | {esc(claim)} |")
+    return "\n".join(lines)
+
+
 def parse_response(text: str) -> dict[str, Any]:
     """Parse full response and extract all SID signals."""
     validation = validate_format(text)
@@ -620,8 +670,19 @@ def main():
         dest="semantic_entropy",
         help="Semantic entropy over cluster-id assignments: 0 1 0 2 1 ...",
     )
+    parser.add_argument(
+        "--claim-list",
+        metavar="DIR",
+        dest="claim_list",
+        help="Render id-tagged claim table from a dir of *-parsed.json (v3.9 HISTORY_CONTEXT)",
+    )
 
     args = parser.parse_args()
+
+    # Claim list mode (v3.9)
+    if args.claim_list:
+        print(format_claim_list(args.claim_list))
+        sys.exit(0)
 
     # CRIS edge pruning mode
     if args.prune:
