@@ -307,7 +307,9 @@ class MockRunner(Runner):
 
     def full_debate(self, prompt: str, question_id: int) -> str:
         self.call_log.append(f"debate:{question_id}")
-        # Full debate always returns the correct answer
+        # SCRIPTED: the mock hands full debate the correct answer BY CONSTRUCTION.
+        # Any S3 "win" in mock mode is an artifact of this line, not evidence
+        # that debate improves accuracy. Only LiveRunner results are evidence.
         return f"#### {self.answers.get(question_id, '999999')}"
 
 
@@ -722,7 +724,10 @@ def main(argv: list[str] | None = None) -> int:
     print("\n" + "=" * 70)
     print("Accuracy vs Cost — Strategy Comparison")
     if args.mock:
-        print("(MockRunner — offline proxy numbers, not real model performance)")
+        print("⚠️  SCRIPTED MOCK — S3 (full debate) wins BY CONSTRUCTION:")
+        print("    MockRunner.full_debate returns the ground-truth answer directly.")
+        print("    These numbers exercise the harness only; they are NOT evidence")
+        print("    of Synod accuracy. Use LiveRunner for real measurements.")
     print("=" * 70)
     print(report["table"])
     print()

@@ -11,7 +11,7 @@
 - Updated `status.json` with session complete
 
 **Cross-references:**
-- Called after Phase 3 (`synod-phase3-defense.md`) or Phase 1 (early exit)
+- Called after Phase 3 (`synod-phase3-defense.md`) or Phase 1.5 skip_debate (`synod-phase1-5-debate-gate.md`)
 - Final phase - no further processing
 
 ---
@@ -55,14 +55,43 @@ Gather from all rounds:
 - Defense/Prosecution strongest arguments
 - Judge's preliminary ruling
 
-## Step 4.2: Calculate Final Confidence
+> **ANTI-STYLE-BIAS:** Weigh contributions by evidence and correctness only —
+> never by length, confident tone, or markdown polish.
 
-Weighted average based on Trust Scores:
-```
-FINAL_CONFIDENCE = (T_claude * C_claude + T_gemini * C_gemini + T_openai * C_openai) / (T_claude + T_gemini + T_openai)
+## Step 4.2: Compute Decision Metrics (v3.8 — replaces FINAL_CONFIDENCE)
+
+> The pre-v3.8 formula `FINAL_CONFIDENCE = Σ(T·C)/Σ(T)` is **removed**: it
+> laundered uncalibrated self-reported confidence through unvalidated CRIS
+> weights into a single authoritative-looking percentage. The 합의 지표 block
+> reports mechanical, auditable observations instead. SID confidence values
+> remain display-only context.
+
+Compute three mechanical metrics:
+
+1. **Claim agreement (N-of-M)** — reuse the debate gate's lexical machinery on
+   the Phase 1 parsed signals (zero model calls):
+
+```bash
+AGREEMENT_JSON=$(SYNOD_DEBATE_GATE=0 python3 "${TOOLS_DIR}/debate_gate.py" \
+    --signals-dir "${SESSION_DIR}/round-1-solver" 2>/dev/null)
+CLAIM_AGREEMENT=$(echo "$AGREEMENT_JSON" | python3 -c \
+    "import json,sys; print(json.load(sys.stdin)['signals']['claim_agreement'])" 2>/dev/null || echo "n/a")
+N_SOLVERS=$(echo "$AGREEMENT_JSON" | python3 -c \
+    "import json,sys; print(json.load(sys.stdin)['n_solvers'])" 2>/dev/null || echo "0")
 ```
 
-Where T = Trust Score, C = Confidence Score
+2. **Concession count** — from Phase 3 (full-debate path only): the number of
+   points the defense conceded and the prosecution conceded, as recorded in
+   `judge-deliberation.md`. `0/0` on the skip_debate path.
+
+3. **Citation coverage** — when Phase 4.5 is active, the fraction of claims
+   carrying `file:line` citations; otherwise report `n/a (evidence gate off)`.
+
+Render as the 합의 지표 block used by the output templates:
+
+```
+DECISION_METRICS="합의 {CLAIM_AGREEMENT} ({N_SOLVERS}개 모델) · 양보 {defense}/{prosecution} · 인용 커버리지 {coverage}"
+```
 
 ## Step 4.3: Generate Mode-Specific Output
 
@@ -92,7 +121,7 @@ print(get_template('$MODE'))
 ### 권장 사항
 {prioritized list of fixes}
 
-### 신뢰도: {FINAL_CONFIDENCE}%
+### 합의 지표: {DECISION_METRICS}
 {brief note on agreement/disagreement between models}
 ```
 
@@ -113,7 +142,7 @@ print(get_template('$MODE'))
 2. {step}
 ...
 
-### 신뢰도: {FINAL_CONFIDENCE}%
+### 합의 지표: {DECISION_METRICS}
 {note on design certainty}
 ```
 
@@ -134,7 +163,7 @@ print(get_template('$MODE'))
 ### 예방책
 {how to avoid in future}
 
-### 신뢰도: {FINAL_CONFIDENCE}%
+### 합의 지표: {DECISION_METRICS}
 ```
 
 #### Mode: idea
@@ -154,7 +183,7 @@ print(get_template('$MODE'))
 ### 권장 사항
 {which idea to pursue and why}
 
-### 신뢰도: {FINAL_CONFIDENCE}%
+### 합의 지표: {DECISION_METRICS}
 ```
 
 #### Mode: general
@@ -171,23 +200,23 @@ print(get_template('$MODE'))
 ### 고려 사항
 {nuances, edge cases, caveats}
 
-### 신뢰도: {FINAL_CONFIDENCE}%
+### 합의 지표: {DECISION_METRICS}
 ```
 
 </details>
 
-## Step 4.3b: Deanonymize Before Branded Output (SYNOD_ANONYMIZE=1 only)
+## Step 4.3b: Deanonymize Before Branded Output (default ON since v3.8)
 
-> **Flag-gated — skip entirely when `SYNOD_ANONYMIZE` is unset or `"0"` (default).**
-> When the flag is off, all branding behaves exactly as in v3.6 — no change.
+> **Default-ON — set `SYNOD_ANONYMIZE=0` to opt out.**
+> When opted out, all branding behaves exactly as in v3.6 — no change.
 
-When `SYNOD_ANONYMIZE=1`, call `deanonymize()` on the compiled synthesis
+Unless `SYNOD_ANONYMIZE=0`, call `deanonymize()` on the compiled synthesis
 content **before** rendering the branded per-model claim summary in Step 4.4.
 This restores real model names so the user sees familiar provider branding in
 the final output even though Phases 1-3 ran anonymously.
 
 ```bash
-if [[ "${SYNOD_ANONYMIZE:-0}" == "1" ]]; then
+if [[ "${SYNOD_ANONYMIZE:-1}" == "1" ]]; then
   # Re-hydrate alias map — must be the same map built in Phase 1 Step 1.0.
   if [[ -z "${SYNOD_ANON_MAP:-}" ]]; then
     echo "[Warning] SYNOD_ANONYMIZE=1 but SYNOD_ANON_MAP is unset — rebuilding map" >&2
@@ -310,7 +339,12 @@ Update status.json:
   "current_round": 4,
   "round_status": {"0": "complete", "1": "complete", "2": "complete", "3": "complete", "4": "complete"},
   "status": "complete",
-  "final_confidence": {FINAL_CONFIDENCE},
+  "decision_metrics": {
+    "claim_agreement": {CLAIM_AGREEMENT},
+    "n_solvers": {N_SOLVERS},
+    "concessions": {"defense": {N}, "prosecution": {N}},
+    "citation_coverage": "{fraction | n/a}"
+  },
   "completed_at": "{ISO_TIMESTAMP}"
 }
 ```

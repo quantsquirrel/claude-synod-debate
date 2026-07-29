@@ -75,11 +75,10 @@ benchmarks:
 
 synod:
   mode: "general"     # review/design/debug/general
-  rounds: 3           # 2 or 3
 
 baselines:
   claude_only: true
-  gpt4o_only: true
+  openai_only: true
   majority_vote: true
   self_consistency: false  # Very expensive
 ```
@@ -193,8 +192,11 @@ python run_gsm8k.py --phase gsm8k --methods synod,claude_only
 ### Custom Synod Configuration
 
 ```bash
-python run_gsm8k.py --synod-rounds 2 --synod-mode review
+python run_gsm8k.py --synod-mode review
 ```
+
+(`--synod-rounds` was removed in v3.8 along with the dynamic-rounds machinery —
+the phase structure is fixed; the debate gate controls depth adaptively.)
 
 ### Analyzing Previous Results
 

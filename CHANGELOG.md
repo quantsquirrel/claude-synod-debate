@@ -8,13 +8,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Extended debate modes (5+ round deliberation for complex architectural decisions)
 - Custom model configuration per session (not just global defaults)
 - Debate visualization dashboard showing confidence trajectories
 - Integration with Claude Code's native analysis capabilities
 - Batch processing for multiple problems in sequence
 - Export debates to markdown reports with embedded confidence metrics
-- Refresh `benchmark/config.yaml` (currently references stale models: gpt-4o, claude-sonnet-4-20250514, gemini-2.0-flash)
+- Phase 4.5 citation VERIFIER (file-exists + line-in-range per model, fabricated-citation findings) and flag-gated execution arbiter for debug/review modes
+- Claim-list HISTORY_CONTEXT (id-tagged semantic_focus items instead of ≤30-word compression) + mandatory Dissent section in Phase 4
+- LiveRunner against the direct-API backends + S0 arm (independent answers + Claude synthesis) — the killer-baseline ablation
+
+---
+
+## [3.8.0] - 2026-07-30
+
+Research-alignment release. A 2025–2026 multi-agent debate literature audit
+(60 sources, adversarially verified) found synod's skeleton — heterogeneous
+cross-provider panel, orchestrator synthesis, independent Phase 1, consensus
+gate — well-supported, but three mechanisms contradicted: self-reported
+confidence as a control signal ("When Two LLMs Debate" arXiv:2505.19184),
+fixed court roles that let a provider prosecute its own winning solution
+(judge-bias literature), and a dynamic-rounds knob that never changed
+execution. This release consolidates decisions onto mechanical signals.
+
+### Changed
+
+- **Debate gate (Phase 1.5) is now DEFAULT-ON and re-keyed on claim agreement.**
+  `SYNOD_DEBATE_GATE` defaults to `1` (`0` = always full debate).
+  `agreement_score` is now pure negation-aware claim agreement — the v3.7
+  composite folded 50% self-reported signals (can_exit/high-conf fractions)
+  into it. The `vote_confidence>=85`, `min_trust>=1.0` (vacuous — trust_score
+  never present in Phase-1 files), and `frac_can_exit>=0.5` skip conditions
+  are removed; one modest fail-closed floor remains (`SYNOD_GATE_MIN_CONF`,
+  default 80→60). New `--tier` argument: **deep/ultra tier always runs the
+  full debate** (debate pays on hard contested problems, arXiv:2505.22960).
+  Fixed the 0.70-vs-0.80 doc/code threshold drift in the module doc.
+- **Anonymization is now DEFAULT-ON** (`SYNOD_ANONYMIZE=1`) across Phases 1–4,
+  honestly reframed: it prevents brand-deference in the stateless external
+  CLIs (arXiv:2510.07517); the in-session Claude judge cannot be blinded.
+- **Phase 3 court roles are authorship-aware.** The provider that authored the
+  defendant solution defends it; the other prosecutes; Claude never argues as
+  counsel for a candidate it authored. Pre-v3.8 the hardcoded
+  Gemini=Defense/OpenAI=Prosecutor table could make OpenAI prosecute its own
+  winning solution.
+- **Judge rulings are rubric-decomposed** (correctness / evidence / edge-case
+  coverage scored separately) with an explicit anti-length/anti-markdown
+  instruction — style bias exceeds position bias in LLM judges.
+- **benchmark/config.yaml + baselines.py track the live direct-API roster**
+  (was the retired gpt-4o / claude-sonnet-4 / gemini-2.0-flash set);
+  baselines now read models from config.yaml. `gpt4o_only` → `openai_only`.
+- **README research table retitled** so protocol-borrowed numbers (ReConcile's
+  >95%) cannot read as Synod results; Free-MAD/SID rows reclassified as
+  in-house heuristics (no verifiable citations exist); DOWN citation added.
+- **MockRunner banner strengthened**: mock output now states loudly that S3
+  wins BY CONSTRUCTION and is not evidence of Synod accuracy.
+
+### Removed
+
+- **Phase 1 confidence early exit** (all can_exit + all ≥90 → skip to Phase 4).
+  Skipping is now decided solely by the Phase 1.5 gate on claim agreement.
+  The unused `early_exit_confidence` threshold is gone from synod-modes.yaml.
+- **`SYNOD_V2_DYNAMIC_ROUNDS` and the complexity→rounds machinery**
+  (classifier `rounds` output, `get_rounds`/`get_complexity_rounds`,
+  per-mode `rounds:` blocks, `TOTAL_ROUNDS`/`BASE_ROUNDS`). Round count only
+  ever labeled the session — the phase structure is fixed. Complexity→tier
+  mapping (which IS load-bearing for models/timeouts) is preserved.
+- Retired gate env vars: `SYNOD_GATE_HIGH_CONF`, `SYNOD_GATE_MIN_TRUST`,
+  `SYNOD_GATE_MIN_CANEXIT` (frac_can_exit/frac_high_conf remain as
+  observability-only signals in gate.json).
+- **Phase 4 `FINAL_CONFIDENCE = Σ(T·C)/Σ(T)`** — it laundered uncalibrated
+  self-reports through unvalidated CRIS weights. Templates now render a
+  mechanical 합의 지표 block: N-of-M claim agreement (reuse of the gate's
+  lexical machinery), concession counts from the judge, and citation coverage
+  when Phase 4.5 is active. Step 2.1b soft defer is deliberately KEPT — it is
+  an anti-sycophancy use of the confidence signal, not a gate.
 
 ---
 

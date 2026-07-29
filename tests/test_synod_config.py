@@ -4,11 +4,9 @@ import pytest
 
 from tools.synod_config import (
     get_all_keywords,
-    get_complexity_rounds,
     get_focus,
     get_mode_config,
     get_model_config,
-    get_rounds,
     get_threshold,
     get_timeouts,
     list_modes,
@@ -58,7 +56,6 @@ def test_get_mode_config_valid_mode():
         assert isinstance(config, dict)
         assert "description" in config
         assert "models" in config
-        assert "rounds" in config
         assert "focus" in config
 
 
@@ -96,50 +93,6 @@ def test_get_focus_unknown_provider_returns_empty():
     assert focus == ""
 
 
-def test_get_rounds_review():
-    """Test get_rounds for review mode."""
-    rounds = get_rounds("review")
-    assert rounds["base"] == 3
-    assert rounds["dynamic_range"] == [2, 4]
-
-
-def test_get_rounds_design():
-    """Test get_rounds for design mode."""
-    rounds = get_rounds("design")
-    assert rounds["base"] == 4
-    assert rounds["dynamic_range"] == [3, 4]
-
-
-def test_get_complexity_rounds_simple():
-    """Test get_complexity_rounds for simple complexity (score=0.3)."""
-    rounds = get_complexity_rounds(0.3)
-    assert rounds == 2
-
-
-def test_get_complexity_rounds_medium():
-    """Test get_complexity_rounds for medium complexity (score=1.0)."""
-    rounds = get_complexity_rounds(1.0)
-    assert rounds == 3
-
-
-def test_get_complexity_rounds_complex():
-    """Test get_complexity_rounds for complex complexity (score=3.0)."""
-    rounds = get_complexity_rounds(3.0)
-    assert rounds == 4
-
-
-def test_get_complexity_rounds_boundary_simple():
-    """Test boundary between simple and medium (score=0.5)."""
-    rounds = get_complexity_rounds(0.5)
-    assert rounds == 3  # At boundary, should be medium
-
-
-def test_get_complexity_rounds_boundary_medium():
-    """Test boundary between medium and complex (score=2.0)."""
-    rounds = get_complexity_rounds(2.0)
-    assert rounds == 4  # At boundary, should be complex
-
-
 def test_list_modes_returns_all_five():
     """Test that list_modes returns all five mode names."""
     modes = list_modes()
@@ -152,7 +105,7 @@ def test_list_modes_returns_all_five():
 def test_all_modes_have_required_fields():
     """Test that all modes have required fields."""
     modes = list_modes()
-    required_fields = ["description", "models", "rounds", "focus"]
+    required_fields = ["description", "models", "focus"]
 
     for mode in modes:
         config = get_mode_config(mode)
@@ -181,19 +134,6 @@ def test_all_modes_have_focus_for_three_providers():
         assert "gemini" in focus, f"Mode {mode} missing gemini focus"
         assert "openai" in focus, f"Mode {mode} missing openai focus"
         assert "claude" in focus, f"Mode {mode} missing claude focus"
-
-
-def test_rounds_have_base_and_dynamic_range():
-    """Test that all modes have base and dynamic_range in rounds."""
-    modes = list_modes()
-
-    for mode in modes:
-        rounds = get_rounds(mode)
-        assert "base" in rounds, f"Mode {mode} missing base rounds"
-        assert "dynamic_range" in rounds, f"Mode {mode} missing dynamic_range"
-        assert isinstance(rounds["base"], int)
-        assert isinstance(rounds["dynamic_range"], list)
-        assert len(rounds["dynamic_range"]) == 2
 
 
 # --- v2.1: Tests for new config functions ---
@@ -233,7 +173,6 @@ def test_get_threshold_known_values():
     assert get_threshold("trust_good") == 1.0
     assert get_threshold("trust_high") == 1.5
     assert get_threshold("trust_cap") == 2.0
-    assert get_threshold("early_exit_confidence") == 90
 
 
 def test_get_threshold_unknown_returns_default():
@@ -308,7 +247,7 @@ def test_get_template_review():
     assert "코드 리뷰 결과" in template
     assert "발견된 문제" in template
     assert "권장 사항" in template
-    assert "신뢰도" in template
+    assert "합의 지표" in template
 
 
 def test_get_template_all_modes():
@@ -320,7 +259,7 @@ def test_get_template_all_modes():
         template = get_template(mode)
         assert isinstance(template, str), f"Mode {mode} should return a string"
         assert len(template) > 0, f"Mode {mode} template should not be empty"
-        assert "신뢰도" in template, f"Mode {mode} should contain confidence section"
+        assert "합의 지표" in template, f"Mode {mode} should contain confidence section"
 
 
 def test_get_template_unknown_returns_empty():

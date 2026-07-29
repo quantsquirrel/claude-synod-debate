@@ -63,25 +63,6 @@ def get_focus(mode: str, provider: str) -> str:
     return mode_config.get("focus", {}).get(provider, "")
 
 
-def get_rounds(mode: str) -> dict:
-    """Get round configuration for a mode."""
-    mode_config = get_mode_config(mode)
-    return mode_config.get("rounds", {"base": 3, "dynamic_range": [2, 4]})
-
-
-def get_complexity_rounds(score: float) -> int:
-    """Get number of rounds based on complexity score."""
-    config = load_config()
-    complexity = config.get("complexity", {})
-
-    if score < complexity.get("simple", {}).get("max_score", 0.5):
-        return complexity.get("simple", {}).get("rounds", 2)
-    elif score < complexity.get("medium", {}).get("max_score", 2.0):
-        return complexity.get("medium", {}).get("rounds", 3)
-    else:
-        return complexity.get("complex", {}).get("rounds", 4)
-
-
 def list_modes() -> list[str]:
     """List all available mode names."""
     config = load_config()

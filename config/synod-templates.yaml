@@ -13,7 +13,7 @@ templates:
     ### 권장 사항
     {prioritized list of fixes}
 
-    ### 신뢰도: {FINAL_CONFIDENCE}%
+    ### 합의 지표: {DECISION_METRICS}
     {brief note on agreement/disagreement between models}
 
   design: |
@@ -32,7 +32,7 @@ templates:
     2. {step}
     ...
 
-    ### 신뢰도: {FINAL_CONFIDENCE}%
+    ### 합의 지표: {DECISION_METRICS}
     {note on design certainty}
 
   debug: |
@@ -51,7 +51,7 @@ templates:
     ### 예방책
     {how to avoid in future}
 
-    ### 신뢰도: {FINAL_CONFIDENCE}%
+    ### 합의 지표: {DECISION_METRICS}
 
   idea: |
     ## 아이디어 평가
@@ -69,7 +69,7 @@ templates:
     ### 권장 사항
     {which idea to pursue and why}
 
-    ### 신뢰도: {FINAL_CONFIDENCE}%
+    ### 합의 지표: {DECISION_METRICS}
 
   general: |
     ## 답변
@@ -84,4 +84,4 @@ templates:
     ### 고려 사항
     {nuances, edge cases, caveats}
 
-    ### 신뢰도: {FINAL_CONFIDENCE}%
+    ### 합의 지표: {DECISION_METRICS}

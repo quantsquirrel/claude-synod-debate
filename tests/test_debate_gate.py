@@ -1,16 +1,20 @@
 """Tests for tools/debate_gate.py — debate-vs-vote pre-gate.
 
+v3.8 semantics: gate is DEFAULT-ON; agreement_score is claim agreement alone
+(self-reported can_exit/high-conf fractions are observability only); the only
+confidence input is a modest fail-closed floor (min_confidence >= 60);
+deep/ultra tier always forces run_debate.
+
 Covers:
-- High agreement + high confidence -> skip_debate (flag ON only)
+- High claim agreement -> skip_debate (default-on)
 - Divergent primary claims -> run_debate
-- All-high-conf but low claim overlap -> run_debate
-- Flag OFF -> always run_debate even on perfect agreement
+- Explicit SYNOD_DEBATE_GATE=0 -> always run_debate even on perfect agreement
 - n=1 -> run_debate
 - Empty / malformed signals -> run_debate (fail-safe)
 - Threshold override via env
-- Weighted vote dominant correctness
-- CLI --signals-dir loads *-parsed.json files
-- Hardened guards: low trust, minority can_exit, trivial primary, low vote_confidence
+- Weighted vote dominant correctness (reporting-only)
+- CLI --signals-dir loads *-parsed.json files; --tier deep forces run_debate
+- Retired v3.7 guards (trust floor, can_exit fraction, vote_confidence) no longer gate
 """
 
 import importlib.util
@@ -37,12 +41,9 @@ _spec.loader.exec_module(_gate)
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
-# Qualifies under all hardened skip criteria:
-#   agreement_score >= 0.80 (high ca + all can_exit + all high_conf -> composite high)
-#   min_confidence >= 80
-#   vote_confidence >= 85 (trust-weighted)
-#   min_trust >= 1.0  (all trust_score=1.1+)
-#   frac_can_exit >= 0.5  (all three can_exit=True)
+# Qualifies under the v3.8 skip criteria:
+#   agreement_score >= 0.80 (pure claim agreement — identical primaries -> 1.0)
+#   min_confidence >= 60 (fail-closed floor)
 #   primary_sufficient=True  (all primaries have >= 2 meaningful tokens)
 _AGREEING_SIGNALS = [
     {
@@ -93,6 +94,7 @@ def clean_env(monkeypatch):
         "SYNOD_DEBATE_GATE",
         "SYNOD_GATE_AGREE_THRESHOLD",
         "SYNOD_GATE_MIN_CONF",
+        # retired v3.7 vars — deleted in case the ambient shell still exports them
         "SYNOD_GATE_HIGH_CONF",
         "SYNOD_GATE_MIN_TRUST",
         "SYNOD_GATE_MIN_CANEXIT",
@@ -150,18 +152,32 @@ class TestClaimAgreement:
 
 
 # ---------------------------------------------------------------------------
-# decide — gate OFF (default)
+# decide — default-on (v3.8) and explicit opt-out
 # ---------------------------------------------------------------------------
 
 
+class TestDecideDefaultOn:
+    def test_unset_flag_gate_enabled_skips_on_agreement(self):
+        """v3.8: with SYNOD_DEBATE_GATE unset, the gate is ACTIVE and skips on agreement."""
+        result = _gate.decide(_AGREEING_SIGNALS)
+        assert result["decision"] == "skip_debate"
+
+    def test_flag_1_still_enables(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        result = _gate.decide(_AGREEING_SIGNALS)
+        assert result["decision"] == "skip_debate"
+
+
 class TestDecideGateOff:
-    def test_gate_off_always_run_debate(self):
-        """With SYNOD_DEBATE_GATE unset, always returns run_debate."""
+    def test_gate_off_always_run_debate(self, monkeypatch):
+        """With SYNOD_DEBATE_GATE=0, always returns run_debate."""
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "0")
         result = _gate.decide(_AGREEING_SIGNALS)
         assert result["decision"] == "run_debate"
 
-    def test_gate_off_still_computes_signals(self):
+    def test_gate_off_still_computes_signals(self, monkeypatch):
         """Even with gate off, signal components are populated for observability."""
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "0")
         result = _gate.decide(_AGREEING_SIGNALS)
         assert "agreement_score" in result
         assert "signals" in result
@@ -171,14 +187,15 @@ class TestDecideGateOff:
         assert "frac_high_conf" in sigs
         assert "min_confidence" in sigs
 
-    def test_gate_off_rationale_mentions_flag(self):
+    def test_gate_off_rationale_mentions_flag(self, monkeypatch):
         """Rationale explains gate is disabled."""
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "0")
         result = _gate.decide(_AGREEING_SIGNALS)
         assert "SYNOD_DEBATE_GATE" in result["rationale"]
 
     def test_gate_off_perfect_agreement_still_run_debate(self, monkeypatch):
-        """Even perfect agreement signals produce run_debate when flag is off."""
-        monkeypatch.delenv("SYNOD_DEBATE_GATE", raising=False)
+        """Even perfect agreement signals produce run_debate when flag is 0."""
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "0")
         perfect = [
             {
                 "model": "a",
@@ -340,8 +357,6 @@ class TestThresholdOverrides:
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         monkeypatch.setenv("SYNOD_GATE_AGREE_THRESHOLD", "0.01")
         monkeypatch.setenv("SYNOD_GATE_MIN_CONF", "1")
-        monkeypatch.setenv("SYNOD_GATE_HIGH_CONF", "1")
-        monkeypatch.setenv("SYNOD_GATE_MIN_TRUST", "0.0")
         signals = [
             {
                 "model": "a",
@@ -368,19 +383,16 @@ class TestThresholdOverrides:
         result = _gate.decide(_AGREEING_SIGNALS)
         assert result["decision"] == "run_debate"
 
-    def test_high_conf_override_affects_frac_high_conf(self, monkeypatch):
-        """Raising HIGH_CONF threshold changes frac_high_conf component."""
+    def test_frac_high_conf_is_reporting_only(self, monkeypatch):
+        """frac_high_conf uses the fixed 85 reporting threshold and never gates.
+
+        v3.8: SYNOD_GATE_HIGH_CONF was retired — setting it has no effect."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
-        monkeypatch.setenv("SYNOD_GATE_HIGH_CONF", "99")
-        result_high = _gate.decide(_AGREEING_SIGNALS)
-
-        monkeypatch.setenv("SYNOD_GATE_HIGH_CONF", "50")
-        result_low = _gate.decide(_AGREEING_SIGNALS)
-
-        # With threshold=99, no solver qualifies as high-conf (all < 99)
-        assert result_high["signals"]["frac_high_conf"] == 0.0
-        # With threshold=50, all solvers qualify
-        assert result_low["signals"]["frac_high_conf"] == 1.0
+        monkeypatch.setenv("SYNOD_GATE_HIGH_CONF", "99")  # retired — ignored
+        result = _gate.decide(_AGREEING_SIGNALS)
+        # Fixture confidences are 92/88/90 — all >= 85 regardless of the retired env
+        assert result["signals"]["frac_high_conf"] == 1.0
+        assert result["decision"] == "skip_debate"
 
 
 # ---------------------------------------------------------------------------
@@ -602,26 +614,26 @@ class TestCLISignalsDir:
 
 
 # ---------------------------------------------------------------------------
-# Hardened guard tests — each test fails exactly ONE new guard
+# v3.8 gate semantics — claim agreement gates; retired v3.7 guards do not
 # ---------------------------------------------------------------------------
 
 
-class TestHardenedGuards:
+class TestGateSemanticsV38:
     def _base_skip_signals(self):
-        """Two solvers that satisfy ALL hardened skip criteria."""
+        """Two solvers that satisfy the v3.8 skip criteria (claim Jaccard >= 0.8)."""
         return [
             {
                 "model": "a",
                 "confidence": 92,
                 "can_exit": True,
-                "semantic_focus": ["Python faster Ruby CPU tasks"],
+                "semantic_focus": ["Python faster Ruby CPU-bound compute tasks"],
                 "trust_score": 1.2,
             },
             {
                 "model": "b",
                 "confidence": 90,
                 "can_exit": True,
-                "semantic_focus": ["Python faster Ruby CPU benchmark"],
+                "semantic_focus": ["Python faster Ruby CPU-bound compute tasks overall"],
                 "trust_score": 1.1,
             },
         ]
@@ -634,51 +646,44 @@ class TestHardenedGuards:
             f"Baseline fixture must skip; got rationale: {result['rationale']}"
         )
 
-    # (a) low trust -> run_debate
-    def test_low_trust_forces_run_debate(self, monkeypatch):
-        """High agreement + high conf but min_trust below floor -> run_debate."""
+    def test_agreement_score_is_pure_claim_agreement(self, monkeypatch):
+        """v3.8: agreement_score == claim_agreement (no can_exit/high-conf folding)."""
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        result = _gate.decide(self._base_skip_signals())
+        assert result["agreement_score"] == result["signals"]["claim_agreement"]
+
+    # Retired guard (a): trust floor no longer gates (was vacuous — trust_score
+    # is never present in Phase-1 parsed files, so it always defaulted to 1.0)
+    def test_low_trust_does_not_block_skip(self, monkeypatch):
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
         signals = self._base_skip_signals()
-        # Both solvers have trust_score=0.4, below default floor of 1.0
         for s in signals:
             s["trust_score"] = 0.4
         result = _gate.decide(signals)
-        assert result["decision"] == "run_debate"
-        assert "min_trust" in result["rationale"]
+        assert result["decision"] == "skip_debate"
 
-    # (b) minority can_exit -> run_debate
-    def test_minority_can_exit_forces_run_debate(self, monkeypatch):
-        """High agreement + high conf but can_exit only a minority -> run_debate."""
+    # Retired guard (b): can_exit fraction no longer gates — self-reported
+    # readiness is uninformative (arXiv:2505.19184)
+    def test_can_exit_false_does_not_block_skip(self, monkeypatch):
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
-        signals = [
-            {
-                "model": "a",
-                "confidence": 92,
-                "can_exit": False,
-                "semantic_focus": ["Python faster Ruby CPU tasks"],
-                "trust_score": 1.2,
-            },
-            {
-                "model": "b",
-                "confidence": 90,
-                "can_exit": False,
-                "semantic_focus": ["Python faster Ruby CPU benchmark"],
-                "trust_score": 1.1,
-            },
-            {
-                "model": "c",
-                "confidence": 91,
-                "can_exit": True,
-                "semantic_focus": ["Python faster Ruby CPU speed"],
-                "trust_score": 1.0,
-            },
-        ]
-        # frac_can_exit = 1/3 ≈ 0.33 < 0.5 default
+        signals = self._base_skip_signals()
+        for s in signals:
+            s["can_exit"] = False
         result = _gate.decide(signals)
-        assert result["decision"] == "run_debate"
-        assert "frac_can_exit" in result["rationale"]
+        assert result["decision"] == "skip_debate"
 
-    # (c) trivial single-token primary claims -> run_debate
+    # Retired guard (d): vote_confidence no longer gates (reporting-only)
+    def test_low_vote_confidence_does_not_block_skip(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        signals = self._base_skip_signals()
+        # Both above the 60 floor, but weighted vote (76) is below the old 85 bar
+        signals[0]["confidence"] = 62
+        signals[1]["confidence"] = 90
+        result = _gate.decide(signals)
+        assert result["signals"]["vote_confidence"] < 85
+        assert result["decision"] == "skip_debate"
+
+    # Kept guard: trivial single-token primary claims -> run_debate
     def test_trivial_primary_claims_forces_run_debate(self, monkeypatch):
         """Agreeing but trivial single-token primary claims -> run_debate."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
@@ -702,49 +707,62 @@ class TestHardenedGuards:
         assert result["decision"] == "run_debate"
         assert "primary_sufficient" in result["rationale"]
 
-    # (d) vote_confidence below high_conf -> run_debate
-    def test_low_vote_confidence_forces_run_debate(self, monkeypatch):
-        """vote_confidence below high_conf forces run_debate."""
+    # Kept guard: confidence floor (60) is fail-closed
+    def test_confidence_below_floor_forces_run_debate(self, monkeypatch):
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
-        # One solver has very low trust so the weighted vote falls below 85
-        # trust: a=10 (conf=92), b=0.01 (conf=40) -> weighted ~= 92 still too high
-        # Use a=0.01 (conf=40), b=0.01 (conf=40) -> vote_confidence=40 < 85
-        signals = [
-            {
-                "model": "a",
-                "confidence": 40,
-                "can_exit": True,
-                "semantic_focus": ["Python faster Ruby CPU tasks"],
-                "trust_score": 0.01,
-            },
-            {
-                "model": "b",
-                "confidence": 40,
-                "can_exit": True,
-                "semantic_focus": ["Python faster Ruby CPU benchmark"],
-                "trust_score": 0.01,
-            },
-        ]
-        # Relax min_trust so only vote_confidence fires
-        monkeypatch.setenv("SYNOD_GATE_MIN_TRUST", "0.0")
+        signals = self._base_skip_signals()
+        signals[0]["confidence"] = 55  # below the 60 floor
         result = _gate.decide(signals)
         assert result["decision"] == "run_debate"
-        assert "vote_confidence" in result["rationale"]
+        assert "min_confidence" in result["rationale"]
 
-    # (e) boundary: agreement exactly 0.80 with all else satisfied -> skip_debate
+    # Boundary: agreement exactly at threshold -> skip_debate
     def test_boundary_agreement_exactly_threshold_skips(self, monkeypatch):
-        """Agreement score exactly at 0.80 threshold with all else passing -> skip_debate."""
+        """Agreement score exactly at the threshold with all else passing -> skip_debate."""
         monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
-        # Lower the threshold to exactly match our fixture's score
         signals = self._base_skip_signals()
         result_check = _gate.decide(signals)
         actual_score = result_check["agreement_score"]
-        # Set threshold to exactly the computed score
         monkeypatch.setenv("SYNOD_GATE_AGREE_THRESHOLD", str(actual_score))
         result = _gate.decide(signals)
         assert result["decision"] == "skip_debate", (
             f"Expected skip at boundary score={actual_score}, got: {result['rationale']}"
         )
+
+
+class TestTierForcesDebate:
+    """deep/ultra tier always runs the full debate regardless of agreement."""
+
+    def test_deep_tier_forces_run_debate(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        result = _gate.decide(_AGREEING_SIGNALS, tier="deep")
+        assert result["decision"] == "run_debate"
+        assert "tier=deep" in result["rationale"]
+
+    def test_ultra_tier_forces_run_debate(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        result = _gate.decide(_AGREEING_SIGNALS, tier="ultra")
+        assert result["decision"] == "run_debate"
+
+    def test_standard_tier_can_skip(self, monkeypatch):
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        result = _gate.decide(_AGREEING_SIGNALS, tier="standard")
+        assert result["decision"] == "skip_debate"
+
+    def test_cli_tier_flag(self, monkeypatch, capsys):
+        import json as _json
+        import sys as _sys
+
+        import pytest as _pytest
+
+        monkeypatch.setenv("SYNOD_DEBATE_GATE", "1")
+        payload = _json.dumps(_AGREEING_SIGNALS)
+        _sys.argv = ["debate_gate.py", "--signals-json", payload, "--tier", "deep"]
+        with _pytest.raises(SystemExit) as exc_info:
+            _gate.main()
+        assert exc_info.value.code == 0
+        result = _json.loads(capsys.readouterr().out)
+        assert result["decision"] == "run_debate"
 
 
 # ---------------------------------------------------------------------------

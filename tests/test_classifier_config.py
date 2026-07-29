@@ -78,28 +78,25 @@ class TestComplexityWithConfig:
     """Test determine_complexity uses config thresholds."""
 
     def test_simple_complexity(self):
-        level, rounds = classifier.determine_complexity("short input")
+        level = classifier.determine_complexity("short input")
         assert level == "simple"
-        assert rounds == 2
 
     def test_medium_complexity(self):
         # 100 words → score ~1.0 (medium)
         prompt = " ".join(["word"] * 100)
-        level, rounds = classifier.determine_complexity(prompt)
+        level = classifier.determine_complexity(prompt)
         assert level == "medium"
-        assert rounds == 3
 
     def test_complex_complexity(self):
         # 300 words + code blocks → score well above 2.0
         prompt = " ".join(["word"] * 300) + "\n```python\ncode\n```\n```js\ncode\n```"
-        level, rounds = classifier.determine_complexity(prompt)
+        level = classifier.determine_complexity(prompt)
         assert level == "complex"
-        assert rounds == 4
 
     def test_file_mentions_add_to_score(self):
         # File mentions (.py, .js) contribute 0.3 each
         prompt = "fix main.py and utils.js and config.yaml"
-        level, rounds = classifier.determine_complexity(prompt)
+        level = classifier.determine_complexity(prompt)
         assert level in ("simple", "medium")
 
 
@@ -278,7 +275,7 @@ class TestClassifierMainCLI:
         assert "confidence" in output
         assert "problem_type" in output
         assert "complexity" in output
-        assert "rounds" in output
+        assert "rounds" not in output  # removed in v3.8 (placebo)
 
     def test_main_mode_only(self, capsys):
         sys.argv = ["synod-classifier.py", "--mode-only", "시스템 설계"]
@@ -291,7 +288,6 @@ class TestClassifierMainCLI:
         classifier.main()
         output = json.loads(capsys.readouterr().out)
         assert "complexity" in output
-        assert "rounds" in output
 
     def test_main_no_prompt_exits(self, monkeypatch):
         sys.argv = ["synod-classifier.py"]
