@@ -48,20 +48,22 @@ SYNOD_DEBATE_GATE=1 \
 
 ## Debate gate toggle
 
-S2's skip behaviour is controlled by `SYNOD_DEBATE_GATE`:
+S2's skip behaviour is controlled by `SYNOD_DEBATE_GATE` (v3.8: default-on):
 
 | Value | Effect |
 |-------|--------|
-| `0` (default) | Gate observe-only — S2 always runs full debate (safe legacy behaviour) |
-| `1` | Gate active — S2 skips debate when all solvers agree with high confidence |
+| unset / `1` (default) | Gate active — S2 skips debate when solvers' primary claims agree |
+| `0` | Gate off — S2 always runs full debate (legacy behaviour) |
 
 Additional gate thresholds (see `tools/debate_gate.py` for full reference):
 
 ```bash
-SYNOD_GATE_AGREE_THRESHOLD=0.80   # minimum agreement score to skip
-SYNOD_GATE_MIN_CONF=80            # minimum per-solver confidence
-SYNOD_GATE_MIN_CANEXIT=0.5        # fraction of solvers that must self-report done
+SYNOD_GATE_AGREE_THRESHOLD=0.80   # minimum claim-agreement score to skip
+SYNOD_GATE_MIN_CONF=60            # fail-closed confidence floor (not an agreement signal)
 ```
+
+Retired in v3.8: `SYNOD_GATE_HIGH_CONF`, `SYNOD_GATE_MIN_TRUST`,
+`SYNOD_GATE_MIN_CANEXIT` — self-reported signals no longer gate the skip.
 
 ## Token / cost model
 

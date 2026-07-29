@@ -118,9 +118,16 @@ def call_synod_solver(
     gemini_model = config["models"]["gemini"]  # e.g., "gemini-3.1-pro-preview"
     openai_model = config["models"]["openai"]["primary"]  # e.g., "gpt-5.6-sol"
 
-    # Map to CLI model names
+    # Map API model ids to CLI aliases (gemini-3: flash/pro; openai-cli:
+    # gpt56sol/gpt54mini, o3 as recovery). The pre-v3.8 check ("gpt4o" in
+    # "gpt-4o") could never match, so every run silently fell back to o3.
     gemini_cli_model = "flash" if "flash" in gemini_model else "pro"
-    openai_cli_model = "gpt4o" if "gpt4o" in openai_model else "o3"
+    if "5.6" in openai_model or "gpt56" in openai_model:
+        openai_cli_model = "gpt56sol"
+    elif "mini" in openai_model:
+        openai_cli_model = "gpt54mini"
+    else:
+        openai_cli_model = "o3"
 
     # Create temp directory for this question
     with tempfile.TemporaryDirectory() as temp_dir:

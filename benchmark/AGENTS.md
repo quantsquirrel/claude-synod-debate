@@ -84,8 +84,7 @@ python run_gsm8k.py --phase gsm8k
 ```
 
 Options:
-- `--methods synod,claude_only,gpt4o_only,majority_vote` - Select specific baselines
-- `--synod-rounds 2` - Override deliberation rounds (2 or 3)
+- `--methods synod,claude_only,openai_only,majority_vote` - Select specific baselines
 - `--synod-mode review` - Override deliberation mode (review/design/debug/general)
 - `--sample-size 100` - Override dataset size for testing
 
@@ -106,7 +105,6 @@ benchmarks:
 
 # Adjust Synod deliberation
 synod:
-  rounds: 2  # Faster (2 rounds), less thorough
   mode: "general"
 
 # Select baselines to run
@@ -139,8 +137,7 @@ python scripts/cost_estimator.py --sample-size 300
 **Cost optimization:**
 1. Reduce `sample_size` in config.yaml (300 → 100 = 1/3 cost)
 2. Disable expensive baselines (self_consistency: false)
-3. Reduce rounds (synod.rounds: 2 instead of 3)
-4. Use smaller models (if available in future phases)
+3. Use smaller models (if available in future phases)
 
 ### Result Analysis
 
