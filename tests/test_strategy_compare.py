@@ -402,3 +402,75 @@ class TestEndToEnd:
         # S3 calls phase1 then full_debate
         assert any("phase1:0" in e for e in runner.call_log)
         assert any("debate:0" in e for e in runner.call_log)
+
+
+# ---------------------------------------------------------------------------
+# v3.10: S0 killer baseline + honest mock synthesis + live guards
+# ---------------------------------------------------------------------------
+
+from benchmark.strategy_compare import StrategyS0  # noqa: E402
+
+
+class TestStrategyS0:
+    def test_s0_correct_on_agreement(self):
+        runner = MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=list(_CORRECT_ANSWERS))
+        report = run_strategy(StrategyS0(runner), _QUESTIONS)
+        assert report.strategy == "S0_independent_synthesis"
+        assert report.accuracy == 1.0
+
+    def test_s0_call_accounting(self):
+        """S0 = n_solvers + exactly one synthesis call per question."""
+        runner = MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=list(_CORRECT_ANSWERS))
+        report = run_strategy(StrategyS0(runner), _QUESTIONS)
+        expected_calls = (MockRunner.N_SOLVERS + 1) * len(_QUESTIONS)
+        assert report.total_calls == expected_calls
+        synth_calls = [c for c in runner.call_log if c.startswith("synthesize:")]
+        assert len(synth_calls) == len(_QUESTIONS)
+
+    def test_s0_cheaper_than_s3(self):
+        r0 = run_strategy(
+            StrategyS0(MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=[])), _QUESTIONS
+        )
+        r3 = run_strategy(
+            StrategyS3(MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=[])), _QUESTIONS
+        )
+        assert r0.total_calls < r3.total_calls
+        assert r0.total_token_estimate < r3.total_token_estimate
+
+    def test_mock_synthesis_is_honest_majority_not_scripted(self):
+        """On disagreement (model0 correct, model1 wrong, 1-1 tie), mock synthesis
+        breaks ties by confidence — it must NOT consult the answer key."""
+        runner = MockRunner(answers=_CORRECT_ANSWERS, agreement_ids=[])
+        signals = runner.phase1_solve("q", 0)
+        out = runner.synthesize("q", signals, 0)
+        # Tie between two answers at equal confidence: winner is one of the two
+        # given answers, resolved deterministically — never a scripted lookup.
+        answers = {s.answer for s in signals}
+        extracted = out.replace("#### ", "")
+        assert extracted in answers
+
+
+class TestLiveGuards:
+    def test_live_requires_env_double_consent(self, monkeypatch, capsys):
+        from benchmark.strategy_compare import main
+
+        monkeypatch.delenv("SYNOD_BENCH_LIVE", raising=False)
+        rc = main(["--live", "--n", "1"])
+        assert rc == 1
+        assert "SYNOD_BENCH_LIVE" in capsys.readouterr().err
+
+    def test_liverunner_raises_without_prereqs(self, monkeypatch):
+        from benchmark.strategy_compare import LiveRunner
+
+        for var in ("GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        with pytest.raises(RuntimeError, match="prerequisites missing"):
+            LiveRunner()
+
+    def test_mock_main_includes_s0_in_report(self, capsys):
+        from benchmark.strategy_compare import main
+
+        rc = main(["--mock", "--n", "4"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "S0_independent_synthesis" in out

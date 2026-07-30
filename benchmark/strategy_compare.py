@@ -2,17 +2,26 @@
 """
 strategy_compare.py — Accuracy-vs-Cost benchmark harness for Synod strategies.
 
-Compares three strategies over a GSM8K sample:
+Compares four strategies over a GSM8K sample:
 
+  S0 — independent + synthesis: solvers answer blind, one synthesis pass —
+                                the KILLER BASELINE the literature says
+                                explains most of MAD's gains
   S1 — single strong solver   : one model call per question
   S2 — debate-gate            : Phase-1 solvers → debate_gate.decide → vote OR debate
   S3 — full 4-phase debate    : always runs the full deliberation pipeline
 
+The question Synod must answer for itself: does S3 (or S2) beat S0 on the
+real workload? If not, the debate rounds are overhead (Smit et al. ICML 2024;
+arXiv:2508.17536).
+
 Architecture
 ------------
 The harness is built around a pluggable Runner interface.  In CI (offline),
-use MockRunner with scripted answers.  For live evaluation, use LiveRunner
-(stub) which delegates to agy-cli / cliproxy-cli.
+use MockRunner with scripted answers.  For live evaluation, LiveRunner (v3.10)
+shells to the direct-API CLIs (gemini-3 / openai-cli) and uses the Anthropic
+SDK for synthesis. LiveRunner.full_debate is a programmatic APPROXIMATION
+(critique round + synthesis), not the full court pipeline.
 
 Cost model
 ----------
@@ -25,18 +34,16 @@ Usage (offline / CI)
 --------------------
     python benchmark/strategy_compare.py --mock --n 10
 
-Usage (live)
+Usage (live — BILLS THREE PROVIDER APIs; double consent required)
 ------------
-    ANTHROPIC_API_KEY=... GEMINI_API_KEY=... OPENAI_API_KEY=... \\
-    python benchmark/strategy_compare.py --n 50 --output results/strategy_compare.json
+    SYNOD_BENCH_LIVE=1 ANTHROPIC_API_KEY=... GEMINI_API_KEY=... OPENAI_API_KEY=... \\
+    python benchmark/strategy_compare.py --live --n 50 --output results/strategy_compare.json
 
 Live-verification gap
 ---------------------
-Real accuracy and wall-time numbers require live model services
-(agy-cli / cliproxy-cli wired to actual provider APIs).
-This module only validates harness correctness via MockRunner.
-See benchmark/README_strategy_compare.md for instructions on
-running the live harness.
+Mock-mode numbers validate the harness only (S3 is scripted-correct BY
+CONSTRUCTION; S0's mock synthesis is an honest majority vote). Only
+LiveRunner results are evidence about Synod accuracy.
 """
 
 from __future__ import annotations
@@ -46,6 +53,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from abc import ABC, abstractmethod
@@ -227,6 +235,20 @@ class Runner(ABC):
             return ""
         return max(scores, key=lambda k: scores[k])
 
+    # ---------- Synthesis (S0 path) ----------
+
+    def synthesize(self, prompt: str, signals: list[SolverSignal], question_id: int) -> str:
+        """
+        S0: one synthesis pass over the INDEPENDENT solver answers — the
+        "killer baseline" the debate literature says explains most of MAD's
+        gains (Smit et al. ICML 2024; arXiv:2508.17536). Zero cross-talk
+        between solvers; the synthesizer reads their answers cold.
+
+        Default implementation reuses vote(); Live/Mock runners override with
+        an actual synthesis call / honest deterministic proxy.
+        """
+        return self.vote(signals)
+
 
 # ---------------------------------------------------------------------------
 # MockRunner — deterministic offline runner for CI
@@ -312,39 +334,242 @@ class MockRunner(Runner):
         # that debate improves accuracy. Only LiveRunner results are evidence.
         return f"#### {self.answers.get(question_id, '999999')}"
 
+    # --- S0 synthesis ---
+
+    def synthesize(self, prompt: str, signals: list[SolverSignal], question_id: int) -> str:
+        self.call_log.append(f"synthesize:{question_id}")
+        # HONEST mock (unlike full_debate above): majority answer, ties broken
+        # by highest confidence. Deliberately NOT scripted-correct, so mock-mode
+        # S0-vs-S3 comparisons expose the S3 script rather than hide it.
+        counts: dict[str, int] = {}
+        best_conf: dict[str, float] = {}
+        for s in signals:
+            key = s.answer or ""
+            counts[key] = counts.get(key, 0) + 1
+            best_conf[key] = max(best_conf.get(key, 0.0), s.confidence)
+        if not counts:
+            return "#### 999999"
+        winner = max(counts, key=lambda k: (counts[k], best_conf[k]))
+        return f"#### {winner}"
+
 
 # ---------------------------------------------------------------------------
-# LiveRunner stub — shells out to agy-cli / cliproxy-cli
+# LiveRunner — direct-API CLIs (gemini-3 / openai-cli) + Anthropic synthesis
 # ---------------------------------------------------------------------------
+
+_SOLVE_PROMPT = """Solve this problem step by step. Be concise.
+
+Problem:
+{question}
+
+REQUIRED: End your response with the final answer in this exact format:
+#### <number>
+"""
+
+_SYNTH_PROMPT = """You are a synthesizer. {n} models independently answered the
+same problem (they never saw each other's work). Read their answers and output
+the answer you judge correct.
+
+Problem:
+{question}
+
+Independent answers:
+{answers}
+
+REQUIRED: End your response with the final answer in this exact format:
+#### <number>
+"""
+
+_CRITIQUE_PROMPT = """You previously answered a problem. Other models answered
+independently. Review all answers, point out any error in your own reasoning,
+then give your final answer.
+
+Problem:
+{question}
+
+All answers (yours is {model}):
+{answers}
+
+REQUIRED: End your response with the final answer in this exact format:
+#### <number>
+"""
+
+
+def _resolve_cli(cmd: str) -> str | None:
+    """Resolve a synod CLI following the skill's lookup order."""
+    import shutil
+
+    home = os.path.expanduser("~")
+    for candidate in (
+        os.path.join(home, ".synod", "bin", cmd),
+        os.path.join(home, ".local", "bin", cmd),
+    ):
+        if os.access(candidate, os.X_OK):
+            return candidate
+    found = shutil.which(cmd)
+    if found:
+        return found
+    script = _TOOLS / f"{cmd}.py"
+    if script.exists():
+        return str(script)
+    return None
 
 
 class LiveRunner(Runner):
     """
-    Live runner stub.  Shells to agy-cli / cliproxy-cli binaries.
+    Live runner against the CURRENT direct-API lanes (v3.10 — the retired
+    agy-cli/cliproxy-cli wiring is gone):
 
-    IMPORTANT: This stub is NOT exercised in CI.  Real calls require
-    ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY and running services.
-    See the "Live-verification gap" note in the module docstring.
+      - Phase-1 solvers: `gemini-3` + `openai-cli` CLIs (GEMINI_API_KEY /
+        OPENAI_API_KEY), resolved like the skill does (~/.synod/bin →
+        ~/.local/bin → PATH → tools/*.py).
+      - S0 synthesis: Anthropic SDK (ANTHROPIC_API_KEY), matching Synod's
+        Claude-as-synthesizer topology.
+      - full_debate: a programmatic APPROXIMATION of Phases 2-4 — one critique
+        round (each solver sees the others' answers and may revise) followed
+        by synthesis. It is NOT the court pipeline; treat S3-live numbers as
+        a lower bound on full-Synod cost and an approximation of its accuracy.
 
-    Raises NotImplementedError until fully wired.
+    Costs real money. Guarded by SYNOD_BENCH_LIVE=1 in main(); constructor
+    raises RuntimeError when prerequisites are missing rather than failing
+    mid-run.
     """
 
-    def phase1_solve(self, prompt: str, question_id: int) -> list[SolverSignal]:
-        raise NotImplementedError(
-            "LiveRunner requires live model services. "
-            "Set SYNOD_BENCH_LIVE=1 and configure API keys."
+    SOLVER_CONF = 80.0  # fixed proxy — live SID extraction is out of scope here
+
+    def __init__(self, timeout: int = 120) -> None:
+        self.timeout = timeout
+        self.gemini_cli = _resolve_cli("gemini-3")
+        self.openai_cli = _resolve_cli("openai-cli")
+        missing = []
+        if not self.gemini_cli or not os.environ.get("GEMINI_API_KEY"):
+            missing.append("gemini-3 CLI + GEMINI_API_KEY")
+        if not self.openai_cli or not os.environ.get("OPENAI_API_KEY"):
+            missing.append("openai-cli + OPENAI_API_KEY")
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            missing.append("ANTHROPIC_API_KEY (S0 synthesis)")
+        if missing:
+            raise RuntimeError(f"LiveRunner prerequisites missing: {'; '.join(missing)}")
+
+    # ---- provider calls ----
+
+    def _run_cli(self, cli: str, model_args: list[str], prompt: str) -> str:
+        cmd = ([sys.executable, cli] if cli.endswith(".py") else [cli]) + model_args
+        result = subprocess.run(
+            cmd, input=prompt, capture_output=True, text=True, timeout=self.timeout
         )
+        return result.stdout.strip()
+
+    def _claude(self, prompt: str) -> str:
+        from anthropic import Anthropic
+
+        response = Anthropic().messages.create(
+            model="claude-sonnet-5",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text
+
+    def _solver_calls(self, prompt: str) -> dict[str, str]:
+        solve = _SOLVE_PROMPT.format(question=prompt)
+        return {
+            "gemini": self._run_cli(
+                self.gemini_cli, ["--model", "pro-latest", "--thinking", "low"], solve
+            ),
+            "openai": self._run_cli(
+                self.openai_cli, ["--model", "gpt56sol", "--reasoning", "low"], solve
+            ),
+        }
+
+    # ---- Runner interface ----
+
+    def phase1_solve(self, prompt: str, question_id: int) -> list[SolverSignal]:
+        signals = []
+        for model, text in self._solver_calls(prompt).items():
+            answer = _extract_numeric(text)
+            signals.append(
+                SolverSignal(
+                    model=model,
+                    answer=answer,
+                    confidence=self.SOLVER_CONF,
+                    can_exit=False,
+                    semantic_focus=[f"the answer is {answer} for this problem"],
+                    trust_score=1.0,
+                )
+            )
+        return signals
+
+    def synthesize(self, prompt: str, signals: list[SolverSignal], question_id: int) -> str:
+        answers = "\n".join(f"- model {i + 1}: {s.answer}" for i, s in enumerate(signals))
+        return self._claude(_SYNTH_PROMPT.format(n=len(signals), question=prompt, answers=answers))
 
     def full_debate(self, prompt: str, question_id: int) -> str:
-        raise NotImplementedError(
-            "LiveRunner requires live model services. "
-            "Set SYNOD_BENCH_LIVE=1 and configure API keys."
+        first = self._solver_calls(prompt)
+        answer_block = "\n".join(f"- {m}: {_extract_numeric(t)}" for m, t in first.items())
+        revised = []
+        for model in first:
+            cli, margs = (
+                (self.gemini_cli, ["--model", "pro-latest", "--thinking", "low"])
+                if model == "gemini"
+                else (self.openai_cli, ["--model", "gpt56sol", "--reasoning", "low"])
+            )
+            text = self._run_cli(
+                cli,
+                margs,
+                _CRITIQUE_PROMPT.format(question=prompt, model=model, answers=answer_block),
+            )
+            revised.append(f"- {model} (revised): {_extract_numeric(text)}")
+        return self._claude(
+            _SYNTH_PROMPT.format(n=len(revised), question=prompt, answers="\n".join(revised))
         )
 
 
 # ---------------------------------------------------------------------------
 # Strategy implementations
 # ---------------------------------------------------------------------------
+
+
+class StrategyS0:
+    """
+    S0 — Independent answers + one synthesis pass. ZERO cross-talk.
+
+    The killer baseline: the literature attributes most of MAD's measured
+    gains to exactly this (independent generation + aggregation), with the
+    discussion phase adding no expected correctness on consensus-reachable
+    problems (Smit et al. ICML 2024; martingale result arXiv:2508.17536).
+    If S3 cannot beat S0 on Synod's own workload, the debate rounds are
+    overhead.
+    """
+
+    name = "S0_independent_synthesis"
+
+    def __init__(self, runner: Runner, token_cfg: dict[str, int] | None = None) -> None:
+        self.runner = runner
+        self.tc = token_cfg or _token_cfg()
+
+    def run_question(self, prompt: str, question_id: int, expected: str) -> QuestionResult:
+        t0 = time.perf_counter()
+
+        signals = self.runner.phase1_solve(prompt, question_id)
+        n_solvers = len(signals)
+        synth_text = self.runner.synthesize(prompt, signals, question_id)
+        predicted = _extract_numeric(synth_text)
+
+        wall = time.perf_counter() - t0
+        calls = n_solvers + 1  # solvers + one synthesis call
+        tokens = self.tc["solver"] * n_solvers + self.tc["strong"]
+
+        return QuestionResult(
+            question_id=question_id,
+            expected=expected,
+            predicted=predicted,
+            is_correct=_answers_match(expected, predicted),
+            model_calls=calls,
+            wall_seconds=round(wall, 4),
+            token_estimate=tokens,
+            gate_decision=None,
+            strategy=self.name,
+        )
 
 
 class StrategyS1:
@@ -702,23 +927,35 @@ def main(argv: list[str] | None = None) -> int:
         correct_answers = {q["id"]: _extract_gsm8k_answer(q["answer"]) for q in questions}
         runner: Runner = MockRunner(answers=correct_answers, agreement_ids=agreement_ids)
     else:
+        # Double consent for spending: --live AND SYNOD_BENCH_LIVE=1.
+        if os.environ.get("SYNOD_BENCH_LIVE") != "1":
+            print(
+                "Error: live mode bills three provider APIs per question. "
+                "Set SYNOD_BENCH_LIVE=1 in addition to --live to confirm.",
+                file=sys.stderr,
+            )
+            return 1
+        questions = load_mock_gsm8k(args.n)
         runner = LiveRunner()
 
     tc = _token_cfg()
 
-    # Run all three strategies
+    # Run all four strategies (S0 = the killer baseline: independent + synthesis)
+    s0 = StrategyS0(runner, tc)
     s1 = StrategyS1(runner, tc)
     s2 = StrategyS2(runner, tc)
     s3 = StrategyS3(runner, tc)
 
+    print("Running S0 (independent + synthesis)...")
+    r0 = run_strategy(s0, questions)
     print("Running S1 (single solver)...")
-    r1 = run_strategy(s1, questions if args.mock else load_mock_gsm8k(args.n))
+    r1 = run_strategy(s1, questions)
     print("Running S2 (debate-gate)...")
-    r2 = run_strategy(s2, questions if args.mock else load_mock_gsm8k(args.n))
+    r2 = run_strategy(s2, questions)
     print("Running S3 (full debate)...")
-    r3 = run_strategy(s3, questions if args.mock else load_mock_gsm8k(args.n))
+    r3 = run_strategy(s3, questions)
 
-    report = build_report([r1, r2, r3])
+    report = build_report([r0, r1, r2, r3])
 
     # Print table
     print("\n" + "=" * 70)

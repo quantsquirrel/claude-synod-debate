@@ -349,17 +349,19 @@ so future tuning argues with the citations, not with vibes.
 | **Citation verifier: file-exists + line-in-range, per model** (v3.9) | The evidence gate *counted* citation-shaped strings — fabricated `utils.py:9999` scored as evidence | Grounded debate beats ungrounded (+5.5%, [Tool-MAD, arXiv:2601.04742](https://arxiv.org/abs/2601.04742)); 21% of multi-agent failures trace to weak verification ([MAST, arXiv:2503.13657](https://arxiv.org/abs/2503.13657)) | single-paper 2026 preprints, but convergent direction; the counting flaw was locally verified |
 | **Lossless claim ledger replaces ≤30-word summaries; mandatory Dissent section** (v3.9) | Phase 2 compressed each solver to one sentence — the exact factual-attrition mechanism the literature measures; evidenced minority views could vanish silently | Up to 72% of issue-critical facts erased across rounds while stances homogenize ([The Deliberative Illusion, arXiv:2606.03032](https://arxiv.org/abs/2606.03032)); 76–89% problem drift on subjective/design tasks ([Stay Focused, arXiv:2502.19559](https://arxiv.org/abs/2502.19559)); in ~25% of divergent cases the minority is right and judge-driven majority overrides test net-negative ([Minority Sentinel, arXiv:2606.29270](https://arxiv.org/abs/2606.29270)) | single-paper 2026 preprints, mutually corroborating |
 | **Execution arbiter for debug/review** (v3.9, `SYNOD_EXEC_ARBITER=1`) | Code disputes were settled by rhetoric even when the target repo had a runnable test suite | Execution-grounded candidate selection is how SWE-bench SOTA picks answers ([CWM, arXiv:2510.02387](https://arxiv.org/abs/2510.02387)); models should debate only what execution cannot settle | product/benchmark-backed pattern; Synod's implementation is bounded (pytest `-x`, hard timeout, timeout = UNSETTLED) |
+| **CRIS rubric demoted to mechanical trust** (v3.10) | Trust was Claude self-grading itself and rivals on unmeasurable qualities (C/R/I/S bands) | LLM-judge trust overrides tested net-negative ([Minority Sentinel, arXiv:2606.29270](https://arxiv.org/abs/2606.29270)); verification, not judgment, is where reliability comes from ([MAST, arXiv:2503.13657](https://arxiv.org/abs/2503.13657)). With TARGET_PATH: `T = 0.25 + 1.75 × verified-citation-rate` (all-fabricated → excluded at 0.25; all-verified → 2.0 cap; nothing decidable → neutral 1.0). Without: uniform 1.0 — no self-graded substitute. trust-scores.json schema unchanged with a `basis` field | the counter-indication is single-paper; the replacement signal is auditable ground truth |
+| **S0 killer-baseline harness + live runner** (v3.10) | Synod had never run the one ablation that tests its core value claim; LiveRunner was a `NotImplementedError` stub targeting retired CLIs | Most of MAD's measured gains are explained by independent answers + aggregation ([Smit et al., ICML 2024](https://arxiv.org/abs/2311.17371); martingale result [arXiv:2508.17536](https://arxiv.org/abs/2508.17536)) — S0 (independent + one synthesis pass, zero cross-talk) is now a first-class arm alongside S1/S2/S3, and LiveRunner targets the current direct-API lanes | harness shipped and mock-validated; **live numbers still pending** — mock S3 remains scripted-correct by construction, mock S0 synthesis is an honest majority vote |
 
 #### What we deliberately did NOT change
 
 - **Step 2.1b soft defer** (low-confidence hint) — kept: it *protects* minority
   perspectives against premature consensus, which is an anti-sycophancy use of
   the confidence signal, not a decision gate.
-- **CRIS trust rubric** — retained for now (it is cited to CortexDebate), but
-  its known weakness is that it is Claude grading itself and rivals on
-  unmeasurable qualities. The plan of record is to *demote* it: when a
-  `TARGET_PATH` exists, weight models by verified-citation rate instead;
-  deleting it outright would break Phase 3/4 consumers.
+- **CRIS `--trust` parser CLI** — the C/R/I/S formula (cited to CortexDebate)
+  remains available as a tested utility, but as of v3.10 it is no longer part
+  of the default flow: trust comes from verified-citation rate (TARGET_PATH
+  set) or uniform neutral weighting (otherwise). It was retained rather than
+  deleted so existing tests and any external callers keep working.
 - **Anti-conformity prompt instructions in Phase 3** — retained but no longer
   load-bearing: [Talk Isn't Always Cheap](https://arxiv.org/abs/2509.05396)
   shows prompt-level anti-sycophancy fails to stop flips, which is exactly why
@@ -369,10 +371,13 @@ so future tuning argues with the citations, not with vibes.
 #### Honest limitations
 
 1. **No local benchmark evidence yet.** Every number above is from the papers'
-   benchmarks, not from Synod runs — `benchmark/results/` is empty and
-   MockRunner is a scripted harness check (S3 wins by construction). The
-   killer ablation — independent answers + Claude synthesis (S0) vs full
-   debate on Synod's real workload — is planned and tracked in the CHANGELOG.
+   benchmarks, not from Synod runs — `benchmark/results/` is still empty.
+   As of v3.10 the missing piece is no longer tooling: the S0 arm and a real
+   LiveRunner exist and are mock-validated. What remains is the live run
+   itself (`SYNOD_BENCH_LIVE=1 … --live`), which bills three provider APIs
+   and has deliberately not been run without explicit owner consent. Until
+   then, mock numbers validate the harness only (S3 is scripted-correct by
+   construction).
 2. **2026 preprints are marked as such.** Tool-MAD, Deliberative Illusion,
    Minority Sentinel, Judging the Judges, and the width-vs-depth Pareto result
    are single-paper, often small-model validations. They all point the same

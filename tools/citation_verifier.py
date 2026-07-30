@@ -112,7 +112,10 @@ def _resolve(cited: str, target: str) -> tuple[str, str | None]:
 
 def _keyword_overlap(claim_line: str, file_line: str) -> float:
     """Observability-only: crude token overlap between claim text and cited line."""
-    tok = lambda s: {t for t in re.split(r"\W+", s.lower()) if len(t) > 2}
+
+    def tok(s: str) -> set[str]:
+        return {t for t in re.split(r"\W+", s.lower()) if len(t) > 2}
+
     a, b = tok(claim_line), tok(file_line)
     if not a or not b:
         return 0.0
@@ -140,7 +143,7 @@ def verify_text(text: str, target: str) -> dict[str, Any]:
                 "line_start": start,
                 "line_end": end,
             }
-            if resolution in ("exact", "unique"):
+            if resolution in ("exact", "unique") and abs_path is not None:
                 try:
                     n_lines = _file_line_count(abs_path)
                 except OSError:
@@ -168,20 +171,40 @@ def verify_text(text: str, target: str) -> dict[str, Any]:
 
     verdicts = [c["verdict"] for c in citations]
     verified = verdicts.count("verified")
-    fabricated = [
-        c for c in citations if c["verdict"] in ("bad_line", "not_found")
-    ]
+    fabricated = [c for c in citations if c["verdict"] in ("bad_line", "not_found")]
     decidable = verified + len(fabricated)
+    rate = round(verified / decidable, 3) if decidable else None
     return {
         "status": "ok",
         "total_citations": len(citations),
         "verified": verified,
         "fabricated": len(fabricated),
         "undecidable": len(citations) - decidable,
-        "verified_rate": round(verified / decidable, 3) if decidable else None,
+        "verified_rate": rate,
+        "trust_score": trust_from_rate(rate),
         "fabricated_citations": [c["citation"] for c in fabricated],
         "citations": citations,
     }
+
+
+def trust_from_rate(rate: float | None) -> float:
+    """Map a verified-citation rate to a trust score on the CRIS scale (v3.10).
+
+    Replaces the self-graded C/R/I/S rubric when TARGET_PATH is available —
+    LLM-judge trust overrides tested net-negative (arXiv:2606.29270) while
+    citation verification is auditable ground truth.
+
+    Mapping: T = 0.25 + 1.75 * rate, preserving the established thresholds
+    (config/synod-modes.yaml):
+      rate 1.0  -> 2.00 (trust_cap: all citations verified)
+      rate ~0.43 -> ~1.0 (trust_good)
+      rate 0.0  -> 0.25 (< trust_exclude 0.5: every citation fabricated —
+                         the model is excluded from synthesis)
+      no decidable citations -> 1.0 (neutral: nothing to verify either way)
+    """
+    if rate is None:
+        return 1.0
+    return round(0.25 + 1.75 * rate, 2)
 
 
 def verify_file(path: str, target: str) -> dict[str, Any]:
@@ -207,7 +230,9 @@ def main() -> None:
 
     try:
         if not os.path.isdir(args.target):
-            print(json.dumps({"status": "error", "error": f"target not a directory: {args.target}"}))
+            print(
+                json.dumps({"status": "error", "error": f"target not a directory: {args.target}"})
+            )
             sys.exit(0)
         if args.file:
             result: Any = verify_file(args.file, args.target)
@@ -216,7 +241,14 @@ def main() -> None:
                 verify_file(p, args.target)
                 for p in sorted(_glob.glob(os.path.join(args.dir, "*.md")))
             ]
-            result = {"status": "ok", "reports": reports}
+            # Per-model trust map for Phase 2 trust-scores.json (v3.10 CRIS
+            # demotion): "gemini-response.md" -> "gemini".
+            trust = {
+                r["source"].replace("-response.md", "").replace(".md", ""): r["trust_score"]
+                for r in reports
+                if r.get("status") == "ok"
+            }
+            result = {"status": "ok", "reports": reports, "trust": trust}
         print(json.dumps(result, indent=2, ensure_ascii=False))
     except Exception as exc:  # fail-safe: report, never block the pipeline
         print(json.dumps({"status": "error", "error": str(exc)}))

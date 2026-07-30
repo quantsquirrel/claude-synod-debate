@@ -294,60 +294,46 @@ them; debate only what execution cannot settle.
 `skipped`/`timeout`/`error` statuses are logged but NOT injected — an absent or
 hung suite settles nothing (`timeout` explicitly means UNSETTLED, not failing).
 
-## Step 2.4: Calculate Trust Scores
+## Step 2.4: Calculate Trust Scores (v3.10 — mechanical, CRIS rubric demoted)
 
-For each model's Solver response, calculate Trust Score using this rubric:
+> **The self-graded C/R/I/S rubric is demoted in v3.10.** It was Claude
+> grading itself and its rivals on unmeasurable qualities — the judge-bias
+> literature counter-indicates LLM-judged trust overrides (net-negative,
+> arXiv:2606.29270). Trust now comes from auditable, mechanical signals.
+> The `--trust C R I S` parser CLI (CortexDebate formula) remains available
+> as a utility but is no longer part of the default flow.
 
-### C (Credibility) - Evidence Quality
-| Score | Criteria |
-|-------|----------|
-| 0.9-1.0 | Cites specific code, docs, or proven patterns; claims are verifiable |
-| 0.7-0.8 | References general knowledge; claims are reasonable but not cited |
-| 0.5-0.6 | Makes claims without evidence; relies on "usually" or "typically" |
-| 0.3-0.4 | Vague claims; contradicts known facts |
-| 0.0-0.2 | Fabricates evidence; demonstrably false statements |
+**Path A — TARGET_PATH set (evidence-verifiable runs):**
 
-### R (Reliability) - Logical Consistency
-| Score | Criteria |
-|-------|----------|
-| 0.9-1.0 | Arguments follow logically; no contradictions; conclusions match premises |
-| 0.7-0.8 | Minor logical gaps; mostly coherent reasoning |
-| 0.5-0.6 | Some non-sequiturs; conclusions partially supported |
-| 0.3-0.4 | Major logical flaws; contradicts own statements |
-| 0.0-0.2 | Incoherent reasoning; contradictory conclusions |
-
-### I (Intimacy) - Relevance to Problem
-| Score | Criteria |
-|-------|----------|
-| 0.9-1.0 | Directly addresses the exact problem; solution is immediately applicable |
-| 0.7-0.8 | Addresses problem with minor tangents; mostly relevant |
-| 0.5-0.6 | Partially relevant; includes significant off-topic content |
-| 0.3-0.4 | Mostly off-topic; addresses different problem |
-| 0.0-0.2 | Completely irrelevant response |
-
-### S (Self-Orientation) - Bias/Agenda Detection
-| Score | Criteria |
-|-------|----------|
-| 0.1-0.2 | Neutral, balanced perspective; acknowledges limitations and alternatives |
-| 0.3-0.4 | Slight preference for own approach but considers others |
-| 0.5-0.6 | Noticeable bias; dismisses alternatives without justification |
-| 0.7-0.8 | Strong bias; ignores contradicting evidence |
-| 0.9-1.0 | Completely one-sided; refuses to consider alternatives |
-
-**v2.1:** Trust cap loaded from config: `python3 "${TOOLS_DIR}/synod_config.py" thresholds trust_cap`
-
-**Trust Calculation:** `T = min((C x R x I) / S, TRUST_CAP)`
-
-The formula is capped at 2.0 to prevent unbounded scores when Self-Orientation (S) is very low:
-- S = 0.1 (most neutral) with perfect C/R/I → T = min(10.0, 2.0) = 2.0
-- S = 0.5 (moderate bias) with perfect C/R/I → T = min(2.0, 2.0) = 2.0
-- S = 1.0 (extreme bias) with perfect C/R/I → T = min(1.0, 2.0) = 1.0
+Trust = verified-citation rate per model, computed by the citation verifier
+over the Phase 1 responses:
 
 ```bash
-$SYNOD_PARSER_CLI --trust {C} {R} {I} {S}  # Parser handles capping internally
+CITE_TRUST=$(python3 "${TOOLS_DIR}/citation_verifier.py" \
+    --target "$TARGET_PATH" \
+    --dir "${SESSION_DIR}/round-1-solver" | python3 -c \
+    "import json,sys; print(json.dumps(json.load(sys.stdin).get('trust',{})))")
+# e.g. {"claude": 1.56, "gemini": 2.0, "openai": 0.25}
 ```
 
-**Thresholds:**
+Mapping (`trust_from_rate`): `T = 0.25 + 1.75 × verified_rate`, so all-verified
+→ 2.0 (trust_cap), all-fabricated → 0.25 (below trust_exclude 0.5 — the model
+is excluded from synthesis), no decidable citations → 1.0 (neutral).
+
+**Path B — no TARGET_PATH (design/general questions):**
+
+Uniform neutral trust `T = 1.0` for every model. There is no mechanically
+verifiable evidence to grade, and self-graded rubrics are not a substitute.
+Defendant selection in Phase 3 falls back to the highest SID confidence as a
+tiebreak (a selection heuristic only — confidence remains display-only
+everywhere else).
+
+**Both paths** write `trust-scores.json` with the same schema as before
+(`{model: {trust_score, ...}}`) plus a `"basis"` field:
+`"citation-verification"` or `"uniform"` — so Phase 3/4 consumers and the
+resume path are unchanged.
+
+**Thresholds (unchanged, from config):**
 - T < 0.5 = Exclude from synthesis (unless all are low - see `synod-error-handling.md`)
 - T >= 1.5 = High trust (consider as primary source)
 - T >= 1.0 = Good trust

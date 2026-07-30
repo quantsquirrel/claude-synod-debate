@@ -1,6 +1,6 @@
 # Strategy Compare — Accuracy vs Cost Benchmark Harness
 
-`benchmark/strategy_compare.py` compares three Synod debate strategies over a
+`benchmark/strategy_compare.py` compares four Synod debate strategies over a
 GSM8K sample and reports **accuracy AND cost** (model-call count, wall-time,
 and token estimate) for each.
 
@@ -8,6 +8,7 @@ and token estimate) for each.
 
 | ID | Name | Description |
 |----|------|-------------|
+| S0 | `S0_independent_synthesis` | **Killer baseline** — solvers answer blind, one synthesis pass, zero cross-talk. If S2/S3 can't beat this, debate rounds are overhead (Smit et al. ICML 2024; arXiv:2508.17536) |
 | S1 | `S1_single_solver` | One strong solver call per question — cheapest |
 | S2 | `S2_debate_gate` | Phase-1 solvers → `debate_gate.decide` → vote OR full debate |
 | S3 | `S3_full_debate` | Always runs the full 4-phase Synod pipeline — most thorough |
@@ -15,36 +16,38 @@ and token estimate) for each.
 ## Quick start — offline (CI, no API keys)
 
 ```bash
-# Run all three strategies on 10 mock GSM8K questions
+# Run all four strategies on 10 mock GSM8K questions
 python benchmark/strategy_compare.py --mock --n 10
 
 # Enable the debate gate so S2 actually skips debate on high-agreement items
 SYNOD_DEBATE_GATE=1 python benchmark/strategy_compare.py --mock --n 10
 ```
 
-## Live run (requires model services)
+## Live run (BILLS THREE PROVIDER APIs — double consent required)
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 export GEMINI_API_KEY="..."
 export OPENAI_API_KEY="sk-..."
 
-# Run on 50 real GSM8K questions with gate enabled, save JSON report
-SYNOD_DEBATE_GATE=1 \
+# SYNOD_BENCH_LIVE=1 is required IN ADDITION to --live (spending guard)
+SYNOD_BENCH_LIVE=1 SYNOD_DEBATE_GATE=1 \
   python benchmark/strategy_compare.py \
     --live \
     --n 50 \
     --output benchmark/results/strategy_compare_$(date +%Y%m%d).json
 ```
 
-### Prerequisites for live mode
+### Live mode wiring (v3.10)
 
-- `tools/gemini-3.py` and `tools/openai-cli.py` must be accessible and wired to
-  working provider APIs.
-- All three API keys must be set in the environment.
-- The `LiveRunner` class in `strategy_compare.py` is a stub — extend it to
-  shell out to the CLI tools following the pattern in `benchmark/run_gsm8k.py`
-  (`call_synod_solver`).
+- Phase-1 solvers: `gemini-3` + `openai-cli` direct-API CLIs, resolved like the
+  skill does (`~/.synod/bin` → `~/.local/bin` → PATH → `tools/*.py`).
+- S0 synthesis: Anthropic SDK (Claude-as-synthesizer, matching Synod topology).
+- `LiveRunner.full_debate` is a programmatic APPROXIMATION of Phases 2–4
+  (one critique round + synthesis), NOT the court pipeline — treat live S3
+  numbers as a lower bound on full-Synod cost.
+- Solver confidence is a fixed proxy (80) — live SID extraction is out of
+  scope for the harness, so the S2 gate keys on answer/claim agreement.
 
 ## Debate gate toggle
 

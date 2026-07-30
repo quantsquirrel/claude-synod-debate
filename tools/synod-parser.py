@@ -590,7 +590,9 @@ def format_claim_list(signals_dir: str) -> str:
     if not rows:
         return ""
 
-    esc = lambda s: str(s).replace("|", "\\|")
+    def esc(s: Any) -> str:
+        return str(s).replace("|", "\\|")
+
     lines = ["| ID | Agent | Conf | Claim |", "|----|-------|------|-------|"]
     for cid, model, conf, claim in rows:
         lines.append(f"| {cid} | {esc(model)} | {conf} | {esc(claim)} |")

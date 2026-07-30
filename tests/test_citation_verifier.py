@@ -123,9 +123,7 @@ class TestVerdicts:
 
 class TestCLI:
     def _run(self, *args):
-        out = subprocess.run(
-            [sys.executable, _tool_path, *args], capture_output=True, text=True
-        )
+        out = subprocess.run([sys.executable, _tool_path, *args], capture_output=True, text=True)
         assert out.returncode == 0, out.stderr
         return json.loads(out.stdout)
 
@@ -152,3 +150,36 @@ class TestCLI:
         md.write_text("app.py:1")
         r = self._run("--target", str(tmp_path / "nope"), "--file", str(md))
         assert r["status"] == "error"
+
+
+class TestTrustFromCitations:
+    """v3.10 CRIS demotion: trust derived mechanically from verified-citation rate."""
+
+    def test_mapping_endpoints(self):
+        assert _cv.trust_from_rate(1.0) == 2.0  # all verified -> trust_cap
+        assert _cv.trust_from_rate(0.0) == 0.25  # all fabricated -> below exclude
+        assert _cv.trust_from_rate(None) == 1.0  # nothing decidable -> neutral
+
+    def test_all_fabricated_falls_below_exclude_threshold(self, repo):
+        r = _cv.verify_text("ghost.py:1 and phantom.py:2", str(repo))
+        assert r["trust_score"] == 0.25
+        assert r["trust_score"] < 0.5  # trust_exclude in synod-modes.yaml
+
+    def test_all_verified_hits_cap(self, repo):
+        r = _cv.verify_text("app.py:1 and app.py:2", str(repo))
+        assert r["trust_score"] == 2.0
+
+    def test_dir_mode_emits_trust_map(self, repo, tmp_path):
+        import subprocess
+
+        d = tmp_path / "round-1-solver"
+        d.mkdir()
+        (d / "gemini-response.md").write_text("app.py:1 ok")
+        (d / "openai-response.md").write_text("ghost.py:1 invented")
+        out = subprocess.run(
+            [sys.executable, _tool_path, "--target", str(repo), "--dir", str(d)],
+            capture_output=True,
+            text=True,
+        )
+        r = json.loads(out.stdout)
+        assert r["trust"] == {"gemini": 2.0, "openai": 0.25}
