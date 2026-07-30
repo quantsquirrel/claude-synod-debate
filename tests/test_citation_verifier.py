@@ -123,9 +123,7 @@ class TestVerdicts:
 
 class TestCLI:
     def _run(self, *args):
-        out = subprocess.run(
-            [sys.executable, _tool_path, *args], capture_output=True, text=True
-        )
+        out = subprocess.run([sys.executable, _tool_path, *args], capture_output=True, text=True)
         assert out.returncode == 0, out.stderr
         return json.loads(out.stdout)
 
@@ -158,9 +156,9 @@ class TestTrustFromCitations:
     """v3.10 CRIS demotion: trust derived mechanically from verified-citation rate."""
 
     def test_mapping_endpoints(self):
-        assert _cv.trust_from_rate(1.0) == 2.0    # all verified -> trust_cap
-        assert _cv.trust_from_rate(0.0) == 0.25   # all fabricated -> below exclude
-        assert _cv.trust_from_rate(None) == 1.0   # nothing decidable -> neutral
+        assert _cv.trust_from_rate(1.0) == 2.0  # all verified -> trust_cap
+        assert _cv.trust_from_rate(0.0) == 0.25  # all fabricated -> below exclude
+        assert _cv.trust_from_rate(None) == 1.0  # nothing decidable -> neutral
 
     def test_all_fabricated_falls_below_exclude_threshold(self, repo):
         r = _cv.verify_text("ghost.py:1 and phantom.py:2", str(repo))

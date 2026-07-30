@@ -91,9 +91,7 @@ class TestRunArbiter:
 
 class TestCLI:
     def _run(self, *args):
-        out = subprocess.run(
-            [sys.executable, _tool_path, *args], capture_output=True, text=True
-        )
+        out = subprocess.run([sys.executable, _tool_path, *args], capture_output=True, text=True)
         assert out.returncode == 0, out.stderr
         return json.loads(out.stdout)
 

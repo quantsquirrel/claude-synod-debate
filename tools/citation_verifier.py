@@ -112,7 +112,10 @@ def _resolve(cited: str, target: str) -> tuple[str, str | None]:
 
 def _keyword_overlap(claim_line: str, file_line: str) -> float:
     """Observability-only: crude token overlap between claim text and cited line."""
-    tok = lambda s: {t for t in re.split(r"\W+", s.lower()) if len(t) > 2}
+
+    def tok(s: str) -> set[str]:
+        return {t for t in re.split(r"\W+", s.lower()) if len(t) > 2}
+
     a, b = tok(claim_line), tok(file_line)
     if not a or not b:
         return 0.0
@@ -140,7 +143,7 @@ def verify_text(text: str, target: str) -> dict[str, Any]:
                 "line_start": start,
                 "line_end": end,
             }
-            if resolution in ("exact", "unique"):
+            if resolution in ("exact", "unique") and abs_path is not None:
                 try:
                     n_lines = _file_line_count(abs_path)
                 except OSError:
@@ -168,9 +171,7 @@ def verify_text(text: str, target: str) -> dict[str, Any]:
 
     verdicts = [c["verdict"] for c in citations]
     verified = verdicts.count("verified")
-    fabricated = [
-        c for c in citations if c["verdict"] in ("bad_line", "not_found")
-    ]
+    fabricated = [c for c in citations if c["verdict"] in ("bad_line", "not_found")]
     decidable = verified + len(fabricated)
     rate = round(verified / decidable, 3) if decidable else None
     return {
@@ -229,7 +230,9 @@ def main() -> None:
 
     try:
         if not os.path.isdir(args.target):
-            print(json.dumps({"status": "error", "error": f"target not a directory: {args.target}"}))
+            print(
+                json.dumps({"status": "error", "error": f"target not a directory: {args.target}"})
+            )
             sys.exit(0)
         if args.file:
             result: Any = verify_file(args.file, args.target)

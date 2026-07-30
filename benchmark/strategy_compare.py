@@ -501,15 +501,11 @@ class LiveRunner(Runner):
 
     def synthesize(self, prompt: str, signals: list[SolverSignal], question_id: int) -> str:
         answers = "\n".join(f"- model {i + 1}: {s.answer}" for i, s in enumerate(signals))
-        return self._claude(
-            _SYNTH_PROMPT.format(n=len(signals), question=prompt, answers=answers)
-        )
+        return self._claude(_SYNTH_PROMPT.format(n=len(signals), question=prompt, answers=answers))
 
     def full_debate(self, prompt: str, question_id: int) -> str:
         first = self._solver_calls(prompt)
-        answer_block = "\n".join(
-            f"- {m}: {_extract_numeric(t)}" for m, t in first.items()
-        )
+        answer_block = "\n".join(f"- {m}: {_extract_numeric(t)}" for m, t in first.items())
         revised = []
         for model in first:
             cli, margs = (
