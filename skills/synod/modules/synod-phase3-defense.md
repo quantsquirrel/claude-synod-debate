@@ -86,6 +86,10 @@ fi
 
 Select the solution with highest Trust Score as the "defendant."
 
+**v3.10:** when `trust-scores.json` has `"basis": "uniform"` (no TARGET_PATH —
+all trusts are 1.0), break the tie by highest SID confidence score. This is a
+selection heuristic only; confidence remains display-only everywhere else.
+
 ## Step 3.2: Assign Court Roles (authorship-aware since v3.8)
 
 > Pre-v3.8 the roles were hardcoded (Gemini=Defense, OpenAI=Prosecutor), which

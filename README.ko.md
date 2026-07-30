@@ -345,14 +345,17 @@ v3.8부터 자기보고 confidence는 통제 신호에서 표시/바닥값 전�
 | **인용 검증기: 파일 존재 + 라인 범위, 모델별** (v3.9) | 증거 게이트가 인용 모양 문자열을 세기만 함 — 날조 `utils.py:9999`도 증거로 점수 | 근거 있는 토론이 우세 (+5.5%, [Tool-MAD, arXiv:2601.04742](https://arxiv.org/abs/2601.04742)); 실패의 21%가 약한 검증 ([MAST, arXiv:2503.13657](https://arxiv.org/abs/2503.13657)) | 단일 preprint들, 방향 수렴; 카운팅 결함은 로컬 확인됨 |
 | **무손실 claim 원장 + 필수 소수 의견 섹션** (v3.9) | Phase 2가 솔버당 한 문장으로 압축 — 문헌이 측정한 사실 소실 메커니즘 그대로 | 라운드 진행 중 핵심 사실의 최대 72% 소실 ([arXiv:2606.03032](https://arxiv.org/abs/2606.03032)); 주관/설계 과제에서 76–89% 드리프트 ([arXiv:2502.19559](https://arxiv.org/abs/2502.19559)); 의견 분기의 ~25%는 소수가 옳음 ([arXiv:2606.29270](https://arxiv.org/abs/2606.29270)) | 단일 preprint들, 상호 보강 |
 | **실행 중재자 (debug/review)** (v3.9, `SYNOD_EXEC_ARBITER=1`) | 실행 가능한 테스트가 있어도 코드 분쟁을 수사로 판정 | 실행 기반 후보 선택이 SWE-bench SOTA의 방식 ([CWM, arXiv:2510.02387](https://arxiv.org/abs/2510.02387)) | 제품/벤치마크 기반 패턴 |
+| **CRIS 루브릭을 기계적 trust로 강등** (v3.10) | trust가 Claude의 자기/경쟁자 채점(C/R/I/S 밴드)이었음 | LLM 판사 trust 개입은 net-negative ([arXiv:2606.29270](https://arxiv.org/abs/2606.29270)); 신뢰성은 판단이 아니라 검증에서 옴 ([MAST, arXiv:2503.13657](https://arxiv.org/abs/2503.13657)). TARGET_PATH 있음: `T = 0.25 + 1.75 × 검증된 인용률` (전량 날조→0.25 제외, 전량 검증→2.0 상한, 판정 불가→중립 1.0). 없음: 균등 1.0 — 자기 채점 대체물 없음. trust-scores.json 스키마는 `basis` 필드 추가로 유지 | 반증은 단일 논문이나 대체 신호는 감사 가능한 실측 |
+| **S0 킬러 베이스라인 하네스 + 라이브 러너** (v3.10) | 핵심 가치 주장을 검증할 ablation이 부재; LiveRunner는 은퇴한 CLI 대상 스텁 | MAD 이득의 대부분은 독립 답변 + 집계로 설명됨 ([Smit et al., ICML 2024](https://arxiv.org/abs/2311.17371); martingale [arXiv:2508.17536](https://arxiv.org/abs/2508.17536)) — S0(독립 + 합성 1회, 교차 대화 0)가 S1/S2/S3와 나란한 일급 arm이 되고 LiveRunner가 현행 direct-API 레인을 대상으로 함 | 하네스는 mock 검증 완료; **라이브 수치는 미실행** — mock S3는 여전히 설계상 정답, mock S0 합성은 정직한 다수결 |
 
 #### 의도적으로 바꾸지 않은 것
 
 - **Step 2.1b soft defer** — 유지: 소수 관점을 조기 합의로부터 보호하는
   anti-sycophancy 용도이지 결정 게이트가 아님.
-- **CRIS 신뢰 루브릭** — 당분간 유지 (CortexDebate 인용). 알려진 약점은
-  Claude가 자신과 경쟁자를 채점한다는 것. 계획: TARGET_PATH 존재 시 검증된
-  인용률 가중으로 강등 — 즉시 삭제하면 Phase 3/4 소비자가 깨짐.
+- **CRIS `--trust` 파서 CLI** — C/R/I/S 공식(CortexDebate 인용)은 테스트된
+  유틸리티로 남지만 v3.10부터 기본 흐름에서 제외: trust는 검증된 인용률
+  (TARGET_PATH 있음) 또는 균등 중립 가중(없음)에서 옴. 기존 테스트와 외부
+  호출자 호환을 위해 삭제 대신 보존.
 - **Phase 3 동조 방지 프롬프트 지침** — 유지하되 더 이상 하중을 받지 않음:
   프롬프트 수준 anti-sycophancy는 플립을 막지 못함이 밝혀졌고
   ([arXiv:2509.05396](https://arxiv.org/abs/2509.05396)), 그래서 v3.8+의
@@ -361,9 +364,11 @@ v3.8부터 자기보고 confidence는 통제 신호에서 표시/바닥값 전�
 #### 정직한 한계
 
 1. **로컬 벤치마크 증거 부재.** 위 수치는 전부 논문들의 벤치마크이지 Synod
-   실측이 아님 — `benchmark/results/`는 비어 있고 MockRunner는 각본된 하네스
-   점검임. 킬러 ablation(독립 답변 + Claude 합성 S0 vs 전체 토론)은 CHANGELOG에
-   계획으로 기록됨.
+   실측이 아님 — `benchmark/results/`는 여전히 비어 있음. v3.10부터 부족한
+   것은 도구가 아님: S0 arm과 실제 LiveRunner가 존재하고 mock 검증됨. 남은
+   것은 라이브 실행 자체(`SYNOD_BENCH_LIVE=1 … --live`)이며, 3개 프로바이더
+   API에 과금되므로 소유자의 명시적 동의 없이 실행하지 않음. 그 전까지 mock
+   수치는 하네스 검증용일 뿐 (S3는 설계상 정답).
 2. **2026 preprint는 명시적으로 표기.** 방향이 수렴하므로 행동에 옮겼지만,
    확정이 아니라 방향성 근거임.
 3. **최상위 질문은 미해결.** 이기종 프론티어 패널 vs 동일 예산의 단일 프론티어

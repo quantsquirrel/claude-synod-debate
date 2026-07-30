@@ -13,8 +13,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration with Claude Code's native analysis capabilities
 - Batch processing for multiple problems in sequence
 - Export debates to markdown reports with embedded confidence metrics
-- Demote CRIS: when TARGET_PATH is set, weight models by verified-citation rate (citation_verifier per-model reports) instead of the self-graded rubric; uniform/confidence fallback for design/general modes
-- LiveRunner against the direct-API backends + S0 arm (independent answers + Claude synthesis) — the killer-baseline ablation
+- **Run the live S0-vs-S3 ablation** (`SYNOD_BENCH_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/` — the harness is ready (v3.10); the run bills three provider APIs and awaits owner go-ahead
+- Judgment-task evaluation set (~50 design/review questions) scored by the debiased cross-family judge — the arm where the literature predicts debate SHOULD win
+
+---
+
+## [3.10.0] - 2026-07-30
+
+Measurement-readiness release — the final tranche of the 2026-07 research
+audit roadmap. CRIS is demoted to an auditable mechanical signal, and the
+killer-baseline ablation (S0) plus a real LiveRunner make Synod's core value
+claim locally measurable for the first time.
+
+### Changed
+
+- **CRIS rubric demoted (Phase 2 Step 2.4).** The self-graded C/R/I/S 5-band
+  tables and `T = min((C·R·I)/S, cap)` are removed from the default flow —
+  LLM-judged trust overrides tested net-negative (arXiv:2606.29270). Trust is
+  now mechanical: with TARGET_PATH, `T = 0.25 + 1.75 × verified-citation-rate`
+  (`citation_verifier.py trust_from_rate`; all-fabricated → 0.25, below the
+  0.5 exclusion threshold; all-verified → 2.0 cap; nothing decidable →
+  neutral 1.0); without TARGET_PATH, uniform 1.0 with SID-confidence tiebreak
+  for Phase 3 defendant selection only. `trust-scores.json` keeps its schema
+  plus a `basis` field ("citation-verification" | "uniform") so Phase 3/4 and
+  resume are unchanged. The parser `--trust` CLI (CortexDebate) survives as a
+  tested utility outside the default flow.
+- **`citation_verifier.py --dir` now emits a per-model `trust` map** and each
+  report carries `trust_score`, wiring Phase 2 Path A in one call.
+
+### Added
+
+- **S0 strategy arm (`S0_independent_synthesis`)** in
+  `benchmark/strategy_compare.py`: independent solver answers + ONE synthesis
+  pass, zero cross-talk — the ablation the literature says explains most of
+  MAD's gains (Smit et al. ICML 2024; martingale arXiv:2508.17536). Runs
+  alongside S1/S2/S3 in mock and live modes. MockRunner's S0 synthesis is an
+  HONEST majority vote (deliberately not scripted-correct, unlike mock S3's
+  documented by-construction win).
+- **LiveRunner implemented against the current direct-API lanes** (was a
+  NotImplementedError stub targeting the retired agy-cli/cliproxy-cli):
+  Phase-1 via `gemini-3` + `openai-cli` CLIs, S0 synthesis via the Anthropic
+  SDK (Claude-as-synthesizer, matching Synod topology), and `full_debate` as
+  a documented programmatic APPROXIMATION of Phases 2–4 (critique round +
+  synthesis, not the court pipeline). Spending is double-guarded: `--live`
+  AND `SYNOD_BENCH_LIVE=1`, with clear prerequisite errors at construction.
+  No live run has been executed — mock numbers remain harness-validation only.
 
 ---
 

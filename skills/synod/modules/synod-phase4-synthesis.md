@@ -309,7 +309,7 @@ majority overrides tested net-negative. Populate from `contentions.json` +
 - {claim_id}: {minority_claim} — {holder}, 채택되지 않은 이유: {reason}
 - (기각되지 않은 소수 의견 없음)   ← 해당 없을 때만
 
-### 신뢰 점수
+### 신뢰 점수 ({basis: "citation-verification" → "인용 검증 기반" | "uniform" → "균등 (검증 대상 없음)"})
 - ✻ Claude: {score} ({rating})
 - ✦ Gemini: {score} ({rating})
 - ❀ OpenAI: {score} ({rating})
