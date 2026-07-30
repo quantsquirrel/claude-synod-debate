@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Custom model configuration per session (not just global defaults)
+- Debate visualization dashboard showing confidence trajectories
+- Integration with Claude Code's native analysis capabilities
+- Batch processing for multiple problems in sequence
+- Export debates to markdown reports with embedded confidence metrics
+- **Run the live judgment-task eval** (`SYNOD_JUDGE_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/` — but not before the two items below. Start at `--n 5` (70 calls) and check the flip rate before paying for the full 50 (700 calls)
+- **Run the live S0-vs-S3 GSM8K ablation** (`SYNOD_BENCH_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/`. Now measures 50 real questions rather than 10 — but read the power caveat first: this arm bounds cost, it does not settle whether debate helps
+- Validate the judgment-task set before trusting any number it produces: measure separability (bootstrap CIs) and judge-vs-human agreement, per [arXiv:2408.08808](https://arxiv.org/abs/2408.08808). Candidates for an externally-validated primary arm: CODAL-Bench / [CodeUltraFeedback](https://arxiv.org/abs/2403.09032), [CodeJudgeBench](https://arxiv.org/pdf/2507.10535), [Arena-Hard-Auto](https://github.com/lmarena/arena-hard-auto). Licence/redistribution terms unchecked
+- Fix the LiveRunner topology mismatch: Synod's Claude is the **in-session** model (`synod-phase1-solver.md` writes `CLAUDE_SOLVER_RESPONSE` from the session), but LiveRunner calls the Anthropic API with a hardcoded `claude-sonnet-5` / 1024-token config, and runs 2 solvers where Phase 1 has 3 (claude Validator + gemini Architect + openai Explorer). So live numbers do not measure Synod as shipped, and `ANTHROPIC_API_KEY` is a harness artifact rather than a Synod requirement
+
+---
+
+## [3.11.0] - 2026-07-30
+
+Benchmark-honesty release. No skill or pipeline behaviour changes — the
+deliberation path is identical to 3.10.0. What changed is that Synod's
+self-measurement no longer overstates what it measures, and the marketplace
+catalog no longer advertises mechanisms that 3.8-3.10 retired.
+
+### Changed
+
+- **Marketplace and plugin descriptions corrected.** The catalog Claude Code
+  shows on install still advertised "SID confidence scoring" and the
+  "CortexDebate Trust Score" as headline features, and claimed "3-round debates
+  capture >95% of quality improvements". v3.8 demoted self-reported confidence
+  to display-only and deleted the dynamic-rounds machinery as a placebo knob;
+  v3.10 replaced the CRIS/CortexDebate trust rubric with trust derived
+  mechanically from the verified-citation rate. The descriptions now state the
+  mechanical signals that actually drive decisions, and the feature list names
+  the debate gate, citation verifier, claim ledger with mandatory dissent,
+  anonymised review, and the opt-in execution arbiter.
+
 ### Added
 
 - **Judgment-task evaluation arm** (`benchmark/judgment_eval.py` +
@@ -61,15 +94,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   current lanes.
 - Mock mode warns instead of silently capping when `--n` exceeds its 10-problem
   pool.
-
-### Planned
-- Custom model configuration per session (not just global defaults)
-- Debate visualization dashboard showing confidence trajectories
-- Integration with Claude Code's native analysis capabilities
-- Batch processing for multiple problems in sequence
-- Export debates to markdown reports with embedded confidence metrics
-- **Run the live judgment-task eval** (`SYNOD_JUDGE_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/`. Blocked on `ANTHROPIC_API_KEY` and the `anthropic` package, neither of which is present in the maintainer's environment; awaits owner go-ahead. Start at `--n 5` (70 calls) and check the flip rate before paying for the full 50 (700 calls)
-- **Run the live S0-vs-S3 GSM8K ablation** (`SYNOD_BENCH_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/`. Same blockers. Now measures 50 real questions rather than 10 — but read the power caveat first: this arm bounds cost, it does not settle whether debate helps
 
 ---
 
