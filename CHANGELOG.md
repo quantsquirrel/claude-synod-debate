@@ -7,14 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Judgment-task evaluation arm** (`benchmark/judgment_eval.py` +
+  `benchmark/data/judgment_tasks.jsonl`). 50 authored design/review tasks
+  across 10 domains (5 each), every task carrying a 4-criterion rubric and a
+  `failure_mode` naming what a shallow single pass usually misses — 200 judged
+  criteria in total. This is the arm the literature says should separate S0
+  from S3, because GSM8K cannot (see Fixed below).
+
+  Scoring is by judge, so the judge is the measurement instrument. Four
+  countermeasures are mandatory and recorded in every report: anonymised
+  responses with a runtime assertion that arm identity never reaches the judge
+  ([arXiv:2510.07517](https://arxiv.org/abs/2510.07517),
+  [arXiv:2404.13076](https://arxiv.org/abs/2404.13076)); position swap with
+  agreement required ([arXiv:2305.17926](https://arxiv.org/abs/2305.17926));
+  rubric decomposition instead of holistic rulings
+  ([arXiv:2604.23178](https://arxiv.org/abs/2604.23178)); and a cross-family
+  judge — selecting a judge from the authoring family (`anthropic`) aborts the
+  run, while the unavoidable solver overlap (Gemini/OpenAI judge a text their
+  own answers fed) is emitted as an explicit warning.
+
+  A **reliability gate** refuses to name a winner when the position-flip rate
+  exceeds 30%: a judge that contradicts itself under reordering has measured
+  nothing, so reporting its majority would be false precision. Win rate is
+  computed over decisive criteria only, and a rate in [0.45, 0.55] reports as
+  `NO SEPARATION` rather than a narrow win. Mock mode gives both arms equal
+  rubric coverage by construction, so a tie is the correct offline result.
+  Docs: `benchmark/README_judgment_eval.md`. 62 new tests.
+
+### Fixed
+
+- **The live S0-vs-S3 ablation could not have measured anything.** `main()` fed
+  the LIVE branch from `load_mock_gsm8k(args.n)`, a 10-problem hardcoded pool
+  returned as `problems[:n]` — so the documented `--live --n 50` silently ran
+  10 questions, `--seed` was accepted but never used, and those 10 problems are
+  single-step arithmetic that every strategy answers correctly. Billing three
+  providers for that measures a ceiling effect.
+
+  Adds `load_gsm8k(n, seed)`: prefers the real GSM8K test split when `datasets`
+  is installed, else a vendored 50-problem pool of 2-4 step problems whose
+  answers are each computed from an `expr` recorded in the file (a test
+  recomputes all 50). Seeded sampling, and the loader **raises** rather than
+  truncating when the pool is too small. Reports gain `meta.dataset`
+  provenance (source, pool size, seed, question ids) plus a power caveat: at
+  n=50 near the GSM8K ceiling the 95% CI is ~±6pp, so this arm is a cost
+  measurement and no-regression check — `judgment_eval.py` is the
+  discriminating arm.
+- LiveRunner prerequisite failures now print an actionable message instead of a
+  traceback, and state that no API calls were made.
+- `live_verification_gap` in strategy-compare reports no longer names the
+  retired `agy-cli`/`cliproxy-cli` wiring, with a test pinning it to the
+  current lanes.
+- Mock mode warns instead of silently capping when `--n` exceeds its 10-problem
+  pool.
+
 ### Planned
 - Custom model configuration per session (not just global defaults)
 - Debate visualization dashboard showing confidence trajectories
 - Integration with Claude Code's native analysis capabilities
 - Batch processing for multiple problems in sequence
 - Export debates to markdown reports with embedded confidence metrics
-- **Run the live S0-vs-S3 ablation** (`SYNOD_BENCH_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/` — the harness is ready (v3.10); the run bills three provider APIs and awaits owner go-ahead
-- Judgment-task evaluation set (~50 design/review questions) scored by the debiased cross-family judge — the arm where the literature predicts debate SHOULD win
+- **Run the live judgment-task eval** (`SYNOD_JUDGE_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/`. Blocked on `ANTHROPIC_API_KEY` and the `anthropic` package, neither of which is present in the maintainer's environment; awaits owner go-ahead. Start at `--n 5` (70 calls) and check the flip rate before paying for the full 50 (700 calls)
+- **Run the live S0-vs-S3 GSM8K ablation** (`SYNOD_BENCH_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/`. Same blockers. Now measures 50 real questions rather than 10 — but read the power caveat first: this arm bounds cost, it does not settle whether debate helps
 
 ---
 
