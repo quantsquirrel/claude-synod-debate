@@ -52,6 +52,7 @@ import argparse
 import importlib.util
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -802,8 +803,15 @@ def _fmt_report_table(reports: list[StrategyReport]) -> str:
     return header + "\n".join(rows)
 
 
-def build_report(reports: list[StrategyReport]) -> dict[str, Any]:
-    """Build the full JSON report dict."""
+def build_report(
+    reports: list[StrategyReport],
+    dataset: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the full JSON report dict.
+
+    `dataset` carries question-set provenance (source, pool size, seed) so a
+    committed result file states what it was measured on.
+    """
     return {
         "meta": {
             "n_questions": reports[0].n_questions if reports else 0,
@@ -815,11 +823,12 @@ def build_report(reports: list[StrategyReport]) -> dict[str, Any]:
             },
             "live_verification_gap": (
                 "Token estimates and wall-time are proxies only. "
-                "Real accuracy/cost numbers require live model services "
-                "(agy-cli / cliproxy-cli with valid API keys). "
-                "Run with --live flag after setting ANTHROPIC_API_KEY, "
+                "Real accuracy/cost numbers require the live lanes "
+                "(gemini-3 + openai-cli CLIs for solvers, Anthropic SDK for "
+                "synthesis). Run with --live after setting ANTHROPIC_API_KEY, "
                 "GEMINI_API_KEY, OPENAI_API_KEY."
             ),
+            "dataset": dataset,
         },
         "strategies": [asdict(r) for r in reports],
         "table": _fmt_report_table(reports),
@@ -849,6 +858,84 @@ def load_mock_gsm8k(n: int = 10) -> list[dict[str, Any]]:
         ("A pizza is cut into 8 slices. 3 people each eat 2 slices. How many are left?", "#### 2"),
     ]
     return [{"id": i, "question": q, "answer": a} for i, (q, a) in enumerate(problems[:n])]
+
+
+MOCK_POOL_SIZE = 10
+_VENDORED_POOL = _HERE / "data" / "gsm8k_style_pool.jsonl"
+
+
+def _load_vendored_pool() -> list[dict[str, Any]]:
+    with open(_VENDORED_POOL) as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def load_gsm8k(n: int, seed: int = 42) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Load `n` GSM8K questions for a LIVE run, with provenance.
+
+    Prefers the real GSM8K test split when `datasets` is installed; otherwise
+    falls back to the vendored multi-step pool in `benchmark/data/`. Sampling is
+    seeded so a committed result file is reproducible.
+
+    Raises ValueError when the pool cannot supply `n` questions. The inline
+    `load_mock_gsm8k` this replaces for live runs did `problems[:n]`, so
+    `--n 50` silently measured 10 single-step questions — a billed run that
+    could not distinguish the strategies.
+
+    Returns (questions, provenance).
+    """
+    if n < 1:
+        raise ValueError(f"--n must be at least 1, got {n}")
+
+    pool: list[dict[str, Any]] = []
+    source = ""
+    try:
+        from datasets import load_dataset
+
+        ds = load_dataset("gsm8k", "main", split="test")
+        pool = [
+            {"id": i, "question": r["question"], "answer": r["answer"]} for i, r in enumerate(ds)
+        ]
+        source = "gsm8k_test_hf"
+    except Exception:
+        pool = []
+
+    if not pool:
+        pool = _load_vendored_pool()
+        source = "gsm8k_style_vendored"
+
+    if len(pool) < n:
+        raise ValueError(
+            f"requested --n {n} but the '{source}' pool holds only {len(pool)} "
+            f"questions. Install `datasets` for the full GSM8K test split "
+            f"(1319 items), or lower --n. Refusing to silently truncate."
+        )
+
+    rng = random.Random(seed)
+    sample = rng.sample(pool, n)
+    questions = [{"id": q["id"], "question": q["question"], "answer": q["answer"]} for q in sample]
+    provenance = {
+        "source": source,
+        "pool_size": len(pool),
+        "n_requested": n,
+        "n_used": len(questions),
+        "seed": seed,
+        "question_ids": [q["id"] for q in questions],
+        "power_caveat": (
+            "GSM8K is near-saturated for frontier solvers (~95%+). At n=50 the "
+            "95% CI on accuracy is roughly +/-6pp, so an S3-over-S0 gain "
+            "smaller than that is indistinguishable from noise. Treat this arm "
+            "as a cost measurement and a no-regression check, not as evidence "
+            "that debate helps; the judgment-task set is the discriminating arm."
+        ),
+    }
+    if source == "gsm8k_style_vendored":
+        provenance["honest_label"] = (
+            "Authored GSM8K-STYLE problems (2-4 arithmetic steps), not items "
+            "from the published GSM8K test split. Every answer is computed from "
+            "an explicit expression recorded in the pool file's `expr` field."
+        )
+    return questions, provenance
 
 
 # ---------------------------------------------------------------------------
@@ -921,7 +1008,20 @@ def main(argv: list[str] | None = None) -> int:
 
     # Build runner
     if args.mock:
+        if args.n > MOCK_POOL_SIZE:
+            print(
+                f"Warning: --mock pool holds {MOCK_POOL_SIZE} questions; "
+                f"--n {args.n} is capped to {MOCK_POOL_SIZE}. Use --live for larger runs.",
+                file=sys.stderr,
+            )
         questions = load_mock_gsm8k(args.n)
+        dataset = {
+            "source": "mock_inline",
+            "pool_size": MOCK_POOL_SIZE,
+            "n_requested": args.n,
+            "n_used": len(questions),
+            "seed": None,
+        }
         # All even-ID questions are "agreement" questions (S2 will skip debate)
         agreement_ids = [q["id"] for q in questions if q["id"] % 2 == 0]
         correct_answers = {q["id"]: _extract_gsm8k_answer(q["answer"]) for q in questions}
@@ -935,8 +1035,26 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        questions = load_mock_gsm8k(args.n)
-        runner = LiveRunner()
+        try:
+            questions, dataset = load_gsm8k(args.n, args.seed)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"Dataset: {dataset['source']} — {dataset['n_used']} of "
+            f"{dataset['pool_size']} questions, seed {dataset['seed']}",
+            file=sys.stderr,
+        )
+        try:
+            runner = LiveRunner()
+        except RuntimeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            print(
+                "No API calls were made. Set the missing variables and re-run; "
+                "see benchmark/README_strategy_compare.md for the live wiring.",
+                file=sys.stderr,
+            )
+            return 1
 
     tc = _token_cfg()
 
@@ -955,7 +1073,7 @@ def main(argv: list[str] | None = None) -> int:
     print("Running S3 (full debate)...")
     r3 = run_strategy(s3, questions)
 
-    report = build_report([r0, r1, r2, r3])
+    report = build_report([r0, r1, r2, r3], dataset=dataset)
 
     # Print table
     print("\n" + "=" * 70)
