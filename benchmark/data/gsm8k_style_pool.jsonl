@@ -1,0 +1,50 @@
+{"id": 0, "question": "Maya buys 3 notebooks at $4 each and 2 pens at $2 each. She pays with a $20 bill. How much change does she get?", "answer": "#### 4", "expr": "20 - (3*4 + 2*2)", "n_steps": 3}
+{"id": 1, "question": "A baker makes 96 cookies and packs them 12 to a box. He sells 5 boxes. How many boxes are left?", "answer": "#### 3", "expr": "96//12 - 5", "n_steps": 2}
+{"id": 2, "question": "A train travels 240 km in 3 hours, then 150 km in 2 hours. What is its average speed in km/h for the whole trip?", "answer": "#### 78", "expr": "(240 + 150) // (3 + 2)", "n_steps": 3}
+{"id": 3, "question": "Liam saves $15 every week for 8 weeks, then spends $45 on a game. How much does he have left?", "answer": "#### 75", "expr": "15*8 - 45", "n_steps": 2}
+{"id": 4, "question": "A rectangular garden is 12 m long and 8 m wide. A fence goes all the way around except for a 2 m gate. How many metres of fence are needed?", "answer": "#### 38", "expr": "2*(12 + 8) - 2", "n_steps": 3}
+{"id": 5, "question": "A class has 28 students and three quarters of them passed. How many students must retake the test?", "answer": "#### 7", "expr": "28 - 28*3//4", "n_steps": 2}
+{"id": 6, "question": "A shirt costs $40 with 25% off, plus a flat $3 shipping fee. What is the total?", "answer": "#### 33", "expr": "int(40*0.75) + 3", "n_steps": 3}
+{"id": 7, "question": "A farmer has 5 hens that each lay 4 eggs a day. After 6 days he sells 90 eggs. How many eggs are left?", "answer": "#### 30", "expr": "5*4*6 - 90", "n_steps": 3}
+{"id": 8, "question": "A car's tank holds 60 litres and it uses 8 litres per 100 km. After driving 250 km, how many litres remain?", "answer": "#### 40", "expr": "60 - 8*250//100", "n_steps": 3}
+{"id": 9, "question": "A book has 300 pages. Ana reads 45 pages a day for 4 days, then 60 pages on the fifth day. How many pages are left?", "answer": "#### 60", "expr": "300 - (45*4 + 60)", "n_steps": 3}
+{"id": 10, "question": "A team scored 18, 24 and 27 points in three games. What was its average score per game?", "answer": "#### 23", "expr": "(18 + 24 + 27)//3", "n_steps": 2}
+{"id": 11, "question": "Tickets cost $12 for adults and $7 for children. What do 4 adults and 6 children pay in total?", "answer": "#### 90", "expr": "4*12 + 6*7", "n_steps": 3}
+{"id": 12, "question": "A recipe uses 250 g of flour for 10 cookies. How many grams are needed for 36 cookies?", "answer": "#### 900", "expr": "250*36//10", "n_steps": 2}
+{"id": 13, "question": "A worker earns $18 an hour for 38 regular hours plus 6 overtime hours paid at 1.5 times the rate. What is the total pay?", "answer": "#### 846", "expr": "18*38 + 6*27", "n_steps": 3}
+{"id": 14, "question": "A 1200-litre tank drains at 25 litres a minute for 16 minutes, then refills at 40 litres a minute for 5 minutes. How many litres are in it?", "answer": "#### 1000", "expr": "1200 - 25*16 + 40*5", "n_steps": 4}
+{"id": 15, "question": "A shop has 144 apples. A third are rotten and the rest are packed 8 to a bag. How many bags are filled?", "answer": "#### 12", "expr": "(144 - 144//3)//8", "n_steps": 3}
+{"id": 16, "question": "A runner covers 5 km in 25 minutes. At the same pace, how many minutes does 12 km take?", "answer": "#### 60", "expr": "25*12//5", "n_steps": 2}
+{"id": 17, "question": "A phone costs $600. The buyer pays a 20% deposit and the rest in 6 equal payments. How many dollars is each payment?", "answer": "#### 80", "expr": "int(600*0.8)//6", "n_steps": 3}
+{"id": 18, "question": "A library has 850 books, lends out three fifths of them, then 90 are returned. How many are on the shelves?", "answer": "#### 430", "expr": "850 - 850*3//5 + 90", "n_steps": 3}
+{"id": 19, "question": "A rectangle has a perimeter of 36 cm and a length of 11 cm. What is its area in square cm?", "answer": "#### 77", "expr": "11 * ((36 - 2*11)//2)", "n_steps": 3}
+{"id": 20, "question": "A bus has 45 seats and is two thirds full. Then 8 more passengers board. How many passengers are on the bus?", "answer": "#### 38", "expr": "45*2//3 + 8", "n_steps": 2}
+{"id": 21, "question": "A painter finishes 3 rooms in 5 hours. At the same rate, how many hours for 12 rooms?", "answer": "#### 20", "expr": "5*12//3", "n_steps": 2}
+{"id": 22, "question": "An investor puts $2500 into an account paying 8% simple interest a year. What is the balance after 3 years?", "answer": "#### 3100", "expr": "2500 + int(2500*0.08*3)", "n_steps": 3}
+{"id": 23, "question": "A baker fills 4 trays with 15 muffins each. 12 muffins break and the rest sell for $3 apiece. What is the revenue in dollars?", "answer": "#### 144", "expr": "(4*15 - 12)*3", "n_steps": 3}
+{"id": 24, "question": "A cyclist rode 42, 38 and 55 km on three days. The goal is 200 km. How many km remain?", "answer": "#### 65", "expr": "200 - (42 + 38 + 55)", "n_steps": 2}
+{"id": 25, "question": "Two pipes fill a 900-litre tank, one at 12 litres a minute and the other at 18. How many minutes does it take?", "answer": "#### 30", "expr": "900//(12 + 18)", "n_steps": 2}
+{"id": 26, "question": "A family of 4 pays $11 each for cinema tickets and buys 2 popcorns at $6 each. From $100, what is the change?", "answer": "#### 44", "expr": "100 - (4*11 + 2*6)", "n_steps": 3}
+{"id": 27, "question": "A warehouse holds 560 boxes. A quarter ship on Monday, then half of what remains ships on Tuesday. How many boxes are left?", "answer": "#### 210", "expr": "(560 - 560//4) - (560 - 560//4)//2", "n_steps": 3}
+{"id": 28, "question": "A student scored 78, 85 and 92 on three tests. What score on a fourth test gives an average of 86?", "answer": "#### 89", "expr": "86*4 - (78 + 85 + 92)", "n_steps": 3}
+{"id": 29, "question": "A factory makes 320 units a day and 5% are defective. How many good units are made in 7 days?", "answer": "#### 2128", "expr": "int(320*0.95)*7", "n_steps": 3}
+{"id": 30, "question": "A tree is 2 m tall and grows 35 cm a year. How tall is it in centimetres after 6 years?", "answer": "#### 410", "expr": "200 + 35*6", "n_steps": 3}
+{"id": 31, "question": "A chef has 8 kg of rice and uses 250 g per serving. How many servings can be made?", "answer": "#### 32", "expr": "8*1000//250", "n_steps": 2}
+{"id": 32, "question": "A shop displays 15 bicycles and 6 tricycles. How many wheels is that in total?", "answer": "#### 48", "expr": "15*2 + 6*3", "n_steps": 3}
+{"id": 33, "question": "A concert had 1200 tickets. 65% sold in advance and 180 more sold at the door. How many were unsold?", "answer": "#### 240", "expr": "1200 - int(1200*0.65) - 180", "n_steps": 3}
+{"id": 34, "question": "A water bill is a $32 base charge plus $0.15 per unit. What is the bill for 240 units?", "answer": "#### 68", "expr": "32 + int(0.15*240)", "n_steps": 3}
+{"id": 35, "question": "A track lap is 400 m. How many metres does a runner cover in 7 and a half laps?", "answer": "#### 3000", "expr": "400*15//2", "n_steps": 2}
+{"id": 36, "question": "A store buys an item for $18 and marks it up 50%. What is the profit in dollars on 40 items?", "answer": "#### 360", "expr": "int(18*0.5)*40", "n_steps": 3}
+{"id": 37, "question": "A pool is 25 m long, 10 m wide and 2 m deep, and fills at 50 cubic metres an hour. How many hours to fill it?", "answer": "#### 10", "expr": "25*10*2//50", "n_steps": 3}
+{"id": 38, "question": "A class trip costs $840. There are 24 students and 6 of them pay a double share. How many dollars is a single share?", "answer": "#### 28", "expr": "840//(24 + 6)", "n_steps": 3}
+{"id": 39, "question": "A machine makes 45 parts an hour for 6 hours, then 60 an hour for 3 hours. How many parts in total?", "answer": "#### 450", "expr": "45*6 + 60*3", "n_steps": 3}
+{"id": 40, "question": "A debt is $4800. The borrower pays $600 down and then $300 a month. How many months to clear it?", "answer": "#### 14", "expr": "(4800 - 600)//300", "n_steps": 3}
+{"id": 41, "question": "An orchard has 18 rows of 24 trees. One sixth of the trees are barren. How many are productive?", "answer": "#### 360", "expr": "18*24 - 18*24//6", "n_steps": 3}
+{"id": 42, "question": "A recipe for 6 people uses 3 eggs. How many eggs are needed for 22 people, rounding up to whole eggs?", "answer": "#### 11", "expr": "-(-3*22//6)", "n_steps": 3}
+{"id": 43, "question": "A sprinter runs 400 m in 50 seconds. What is the speed in metres per second?", "answer": "#### 8", "expr": "400//50", "n_steps": 2}
+{"id": 44, "question": "A shop runs a buy-3-get-1-free offer on a $9 item. A customer takes 12 items. How many dollars do they pay?", "answer": "#### 81", "expr": "(12 - 12//4)*9", "n_steps": 3}
+{"id": 45, "question": "A truck can carry 3.5 tonnes. How many 25 kg boxes is that?", "answer": "#### 140", "expr": "int(3.5*1000)//25", "n_steps": 2}
+{"id": 46, "question": "A 4500 mAh battery powers a device drawing 250 mA. How many hours does it last?", "answer": "#### 18", "expr": "4500//250", "n_steps": 2}
+{"id": 47, "question": "An investor buys 40 shares at $23 and sells them at $31. What is the profit in dollars?", "answer": "#### 320", "expr": "40*(31 - 23)", "n_steps": 2}
+{"id": 48, "question": "A hotel room is $95 a night for 5 nights, plus 20% tax. What is the total in dollars?", "answer": "#### 570", "expr": "int(95*5*1.2)", "n_steps": 3}
+{"id": 49, "question": "A gardener plants 6 rows of 14 bulbs and a quarter of them fail. How many bulbs grow?", "answer": "#### 63", "expr": "6*14 - 6*14//4", "n_steps": 3}

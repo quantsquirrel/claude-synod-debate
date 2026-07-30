@@ -38,11 +38,16 @@ env/
 *.swo
 *~
 
-# Benchmark results and data (keep .gitkeep)
+# Benchmark results and downloaded datasets (keep .gitkeep)
 benchmark/results/*
 benchmark/data/*
 !benchmark/results/.gitkeep
 !benchmark/data/.gitkeep
+# VENDORED question pools are source, not downloaded artifacts — the harnesses
+# and their tests read these at runtime, so they must be tracked or CI fails on
+# a fresh clone.
+!benchmark/data/gsm8k_style_pool.jsonl
+!benchmark/data/judgment_tasks.jsonl
 
 # OS files
 .DS_Store

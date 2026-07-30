@@ -41,7 +41,9 @@ from benchmark.strategy_compare import (  # noqa: E402
     StrategyS3,
     _answers_match,
     _extract_gsm8k_answer,
+    _load_vendored_pool,
     build_report,
+    load_gsm8k,
     load_mock_gsm8k,
     run_strategy,
 )
@@ -283,7 +285,11 @@ class TestReportShape:
     def test_meta_has_live_gap_note(self) -> None:
         report = build_report(self._get_reports())
         assert "live_verification_gap" in report["meta"]
-        assert "live model services" in report["meta"]["live_verification_gap"]
+        note = report["meta"]["live_verification_gap"]
+        assert "live lanes" in note
+        # The note must name the CURRENT wiring, not the retired v3.9 CLIs.
+        assert "gemini-3" in note and "openai-cli" in note
+        assert "agy-cli" not in note and "cliproxy" not in note
 
     def test_strategies_list_length(self) -> None:
         reports = self._get_reports()
@@ -332,6 +338,81 @@ class TestReportShape:
 # ---------------------------------------------------------------------------
 # 5. load_mock_gsm8k smoke-test
 # ---------------------------------------------------------------------------
+
+
+class TestLiveDataset:
+    """v3.10.1: the live loader must not silently truncate (`problems[:n]`)."""
+
+    def test_vendored_pool_holds_at_least_50(self) -> None:
+        assert len(_load_vendored_pool()) >= 50
+
+    def test_vendored_answers_match_their_expressions(self) -> None:
+        """Every vendored answer is recomputed from its recorded `expr`."""
+        for row in _load_vendored_pool():
+            expected = eval(row["expr"], {"__builtins__": {"int": int}}, {})  # noqa: S307
+            assert _extract_gsm8k_answer(row["answer"]) == str(expected), (
+                f"id {row['id']}: answer {row['answer']} != expr {row['expr']}"
+            )
+
+    def test_vendored_problems_are_multi_step(self) -> None:
+        """Single-step arithmetic ceilings out for every model — reject it."""
+        assert all(r["n_steps"] >= 2 for r in _load_vendored_pool())
+
+    def test_requesting_50_yields_50(self) -> None:
+        qs, prov = load_gsm8k(50)
+        assert len(qs) == 50
+        assert prov["n_used"] == 50 == prov["n_requested"]
+
+    def test_refuses_to_truncate_when_pool_too_small(self) -> None:
+        with pytest.raises(ValueError, match="Refusing to silently truncate"):
+            load_gsm8k(10_000)
+
+    def test_rejects_non_positive_n(self) -> None:
+        with pytest.raises(ValueError, match="at least 1"):
+            load_gsm8k(0)
+
+    def test_seed_is_deterministic(self) -> None:
+        a, _ = load_gsm8k(20, seed=7)
+        b, _ = load_gsm8k(20, seed=7)
+        assert [q["id"] for q in a] == [q["id"] for q in b]
+
+    def test_different_seeds_sample_differently(self) -> None:
+        a, _ = load_gsm8k(20, seed=1)
+        b, _ = load_gsm8k(20, seed=2)
+        assert [q["id"] for q in a] != [q["id"] for q in b]
+
+    def test_provenance_records_source_and_power_caveat(self) -> None:
+        _, prov = load_gsm8k(5)
+        assert prov["source"] in ("gsm8k_test_hf", "gsm8k_style_vendored")
+        assert prov["seed"] == 42
+        assert "CI" in prov["power_caveat"]
+        if prov["source"] == "gsm8k_style_vendored":
+            assert "not items" in prov["honest_label"]
+
+    def test_report_carries_dataset_provenance(self) -> None:
+        _, prov = load_gsm8k(5)
+        report = build_report(
+            [
+                StrategyReport(
+                    strategy="S0",
+                    n_questions=5,
+                    n_correct=5,
+                    accuracy=1.0,
+                    total_calls=15,
+                    calls_per_question=3.0,
+                    total_wall_seconds=0.1,
+                    total_token_estimate=100,
+                    estimated_cost_usd=0.1,
+                    per_question_results=[],
+                )
+            ],
+            dataset=prov,
+        )
+        assert report["meta"]["dataset"]["source"] == prov["source"]
+
+    def test_report_dataset_defaults_to_none(self) -> None:
+        report = build_report([])
+        assert report["meta"]["dataset"] is None
 
 
 class TestMockDataset:
