@@ -257,16 +257,25 @@ question; if it has drifted, flag the drift explicitly as your first point.
 </semantic_focus>
 ```
 
-## Step 2.3b: Execution Arbiter (SYNOD_EXEC_ARBITER=1, debug/review modes only)
+## Step 2.3b: Execution Arbiter (default-on since v3.12; debug/review modes only)
 
-> **Flag-gated AND mode-gated — skip entirely unless `SYNOD_EXEC_ARBITER=1`
-> AND `MODE` is `debug` or `review` AND Phase 0.5 ran with a `TARGET_PATH`.**
+> **Mode-gated — runs when `MODE` is `debug` or `review` AND Phase 0.5 ran with
+> a `TARGET_PATH` AND the probe collected at least one test. Set
+> `SYNOD_EXEC_ARBITER=0` to disable; because this step executes code, the check
+> is `== "1"` so any unrecognised value fails toward NOT running.**
 > Execution is the arbiter the literature trusts for code disputes
 > (SWE-bench execution-grounded selection, arXiv:2510.02387; Tool-MAD
 > arXiv:2601.04742): models debate only what execution cannot settle.
+>
+> The three remaining conditions already select exactly the situations where
+> execution can settle anything, so the extra opt-in flag only suppressed a
+> signal the pipeline had already qualified. **It runs the target repo's own
+> test suite** — pytest imports `conftest.py` and every test module during
+> collection, so set `SYNOD_EXEC_ARBITER=0` for targets whose suite has real
+> side effects (live services, shared databases, outbound mail).
 
 ```bash
-if [[ "${SYNOD_EXEC_ARBITER:-0}" == "1" && ( "$MODE" == "debug" || "$MODE" == "review" ) \
+if [[ "${SYNOD_EXEC_ARBITER:-1}" == "1" && ( "$MODE" == "debug" || "$MODE" == "review" ) \
       && -n "${TARGET_PATH:-}" && -d "${SESSION_DIR}/phase0.5/probe" ]]; then
   python3 "${TOOLS_DIR}/exec_arbiter.py" \
       --target "$TARGET_PATH" \

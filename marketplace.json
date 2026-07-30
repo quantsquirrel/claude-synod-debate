@@ -1,9 +1,9 @@
 {
   "name": "synod",
-  "version": "3.11.0",
+  "version": "3.12.0",
   "displayName": "Synod: Multi-Agent Debate System",
   "description": "Research-backed multi-agent deliberation with Claude, Gemini, and OpenAI - structured 3-round debates for superior decision-making",
-  "longDescription": "Synod brings peer-reviewed multi-agent debate methodologies to Claude Code. Instead of relying on a single LLM prone to confirmation bias and hallucination, Synod orchestrates structured debates between Claude, Gemini, and OpenAI across three rounds: Solver, Critic, and Defense/Prosecution. Originally built on ReConcile (ACL 2024), AgentsCourt, ConfMAD and A-HMAD, and since revised wherever later research contradicted them — see the CHANGELOG for the audit trail. Decisions are keyed on MECHANICAL signals rather than self-reported ones: a debate gate on claim agreement, trust derived from the verified file:line citation rate, a lossless claim ledger with a mandatory Dissent section, anonymised cross-model review by default, and an opt-in execution arbiter that settles code disputes by running the target repo's tests. Self-reported confidence is displayed but never gates a decision. Suited to code review, architecture design, debugging, and brainstorming.",
+  "longDescription": "Synod brings peer-reviewed multi-agent debate methodologies to Claude Code. Instead of relying on a single LLM prone to confirmation bias and hallucination, Synod orchestrates structured debates between Claude, Gemini, and OpenAI across three rounds: Solver, Critic, and Defense/Prosecution. Originally built on ReConcile (ACL 2024), AgentsCourt, ConfMAD and A-HMAD, and since revised wherever later research contradicted them — see the CHANGELOG for the audit trail. Decisions are keyed on MECHANICAL signals rather than self-reported ones: a debate gate on claim agreement, trust derived from the verified file:line citation rate, a lossless claim ledger with a mandatory Dissent section, anonymised cross-model review by default, and an execution arbiter that settles code disputes in debug/review mode by running the target repo's own test suite (default-on; set SYNOD_EXEC_ARBITER=0 to disable). Self-reported confidence is displayed but never gates a decision. Suited to code review, architecture design, debugging, and brainstorming.",
   "author": {
     "name": "quantsquirrel",
     "email": "",
@@ -61,7 +61,7 @@
     "Citation verifier: file:line claims checked against the target repo; fabrications excluded",
     "Mechanical trust: T = 0.25 + 1.75 × verified-citation rate — no self-graded rubric",
     "Lossless claim ledger with a mandatory Dissent section",
-    "Execution arbiter (opt-in): code disputes settled by running the target repo's tests",
+    "Execution arbiter (default-on for debug/review): code disputes settled by running the target repo's tests",
     "Anonymised cross-model review by default",
     "5 specialized modes: review, design, debug, idea, general",
     "Session management and resume capability",

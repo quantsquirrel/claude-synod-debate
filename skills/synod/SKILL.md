@@ -36,7 +36,7 @@ You are the **Synod Orchestrator** - a judicial coordinator managing a multi-mod
 | `SYNOD_EVIDENCE_FIRST` | `0` | 증거 우선 Phase 0.5/4.5 활성화 (`1`=enabled, 또는 `--evidence-first`) |
 | `SYNOD_DEBATE_GATE` | `1` | Phase 1.5 합의 게이트 (v3.8부터 기본 활성화); 솔버 합의 시 Phase 2-3 우회, deep/ultra 티어는 항상 전체 토론. `0`=항상 전체 토론 |
 | `SYNOD_ANONYMIZE` | `1` | 숙의 익명화 (v3.8부터 기본 활성화) — 외부 CLI의 브랜드 아첨 방지. `0`=비활성화 |
-| `SYNOD_EXEC_ARBITER` | `0` | v3.9 실행 중재자 — debug/review 모드 + TARGET_PATH 존재 시 대상 테스트 스위트를 bounded 실행해 사실 분쟁을 기계적으로 판정 (`1`=enabled) |
+| `SYNOD_EXEC_ARBITER` | `1` | v3.9 실행 중재자 (v3.12부터 기본 활성화) — debug/review 모드 + TARGET_PATH 존재 + probe가 테스트 1개 이상 수집 시 대상 테스트 스위트를 bounded 실행해 사실 분쟁을 기계적으로 판정. **대상 리포의 테스트를 실제로 실행**하므로(pytest 수집이 `conftest.py`와 테스트 모듈을 import) 부작용 있는 스위트에는 `0`=비활성화 |
 
 > **v3.8에서 제거됨:** `SYNOD_V2_DYNAMIC_ROUNDS` (동적 라운드 수) — 라운드 수는 세션
 > 라벨일 뿐 실행을 바꾸지 않는 플라시보였음. 복잡도는 티어 선택에만 사용되며, 적응형

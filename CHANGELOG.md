@@ -17,6 +17,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Run the live S0-vs-S3 GSM8K ablation** (`SYNOD_BENCH_LIVE=1 … --live --n 50`) and commit results to `benchmark/results/`. Now measures 50 real questions rather than 10 — but read the power caveat first: this arm bounds cost, it does not settle whether debate helps
 - Validate the judgment-task set before trusting any number it produces: measure separability (bootstrap CIs) and judge-vs-human agreement, per [arXiv:2408.08808](https://arxiv.org/abs/2408.08808). Candidates for an externally-validated primary arm: CODAL-Bench / [CodeUltraFeedback](https://arxiv.org/abs/2403.09032), [CodeJudgeBench](https://arxiv.org/pdf/2507.10535), [Arena-Hard-Auto](https://github.com/lmarena/arena-hard-auto). Licence/redistribution terms unchecked
 - Fix the LiveRunner topology mismatch: Synod's Claude is the **in-session** model (`synod-phase1-solver.md` writes `CLAUDE_SOLVER_RESPONSE` from the session), but LiveRunner calls the Anthropic API with a hardcoded `claude-sonnet-5` / 1024-token config, and runs 2 solvers where Phase 1 has 3 (claude Validator + gemini Architect + openai Explorer). So live numbers do not measure Synod as shipped, and `ANTHROPIC_API_KEY` is a harness artifact rather than a Synod requirement
+- Give the execution arbiter a green baseline — it currently runs the target suite with no "was this already red?" reference, so a **pre-existing** failing test is reported as machine-verified evidence. Deliberately not pre-built: fix it if false signals actually show up in use
+
+---
+
+## [3.12.0] - 2026-07-30
+
+### Changed
+
+- **Execution arbiter is default-on for debug/review** (`SYNOD_EXEC_ARBITER`,
+  `0` → `1`). This is a one-line gate change, not new machinery.
+
+  The gate already required `MODE` to be `debug` or `review`, a `TARGET_PATH`,
+  and a Phase 0.5 probe that collected at least one test. Those three
+  conditions select exactly the situations where execution can settle
+  something — so the extra opt-in flag was suppressing a signal the pipeline
+  had already qualified, and the default path went on settling code disputes
+  by argument. Execution-grounded selection is how SWE-bench SOTA picks among
+  candidates ([CWM, arXiv:2510.02387](https://arxiv.org/abs/2510.02387)) and it
+  is the strongest mechanical signal available, which is the direction 3.8-3.10
+  moved everything else.
+
+  The check is `"${SYNOD_EXEC_ARBITER:-1}" == "1"` rather than `!= "0"`:
+  because this step executes code, an unrecognised value (a typo like
+  `SYNOD_EXEC_ARBITER=flase`) fails toward NOT running.
+
+  **What this means in practice:** in debug/review mode against a repo with a
+  collectable pytest suite, Synod now runs that suite. pytest imports
+  `conftest.py` and every test module during collection, so set
+  `SYNOD_EXEC_ARBITER=0` for targets whose suite has real side effects (live
+  services, shared databases, outbound mail) or is already red — there is no
+  baseline yet, so a pre-existing failure is reported as machine-verified
+  evidence. Bounds are unchanged: `pytest -x -q`, 120s hard timeout, timeout
+  treated as UNSETTLED rather than failing, and the arbiter never blocks the
+  pipeline.
+
+  Docs updated in lockstep: `SKILL.md` flag table, the Phase 2 module, both
+  READMEs' research-basis rows, and the marketplace copy that described the
+  arbiter as opt-in.
 
 ---
 
